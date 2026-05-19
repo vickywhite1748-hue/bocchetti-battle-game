@@ -53,7 +53,7 @@ describe("V1 data model", () => {
       { stable: 0, story: 0, fate: 0 },
     );
 
-    expect(counts).toEqual({ stable: 12, story: 12, fate: 6 });
+    expect(counts).toEqual({ stable: 11, story: 12, fate: 7 });
   });
 
   it("keeps repeated character names readable", () => {
@@ -76,6 +76,23 @@ describe("V1 data model", () => {
       expect(characterIds.has(bond.characterIds[0])).toBe(true);
       expect(characterIds.has(bond.characterIds[1])).toBe(true);
       expect(bond.bonus).toBeLessThanOrEqual(MAX_ROUND_BONUS);
+      expect(bond.characterIds).not.toContain("sonny-family-price");
+      expect(bond.characterIds).not.toContain("chichi-returned-truth");
+    }
+  });
+
+  it("keeps family glory cards out of one-round bonds", () => {
+    const gloryCards = CHARACTER_CARDS.filter(
+      (card) => card.score === "family_glory",
+    );
+    const bondedIds = new Set(BOND_RULES.flatMap((bond) => bond.characterIds));
+
+    expect(gloryCards.map((card) => card.id).sort()).toEqual([
+      "chichi-returned-truth",
+      "sonny-family-price",
+    ]);
+    for (const card of gloryCards) {
+      expect(bondedIds.has(card.id)).toBe(false);
     }
   });
 });

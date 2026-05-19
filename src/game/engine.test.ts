@@ -80,6 +80,25 @@ describe("core engine", () => {
     expect(failed.met).toBe(false);
   });
 
+  it("evaluates equal marker count conditions", () => {
+    const card = CHARACTER_CARDS.find(
+      (item) => item.id === "xiaohong-casino-host",
+    );
+    expect(card).toBeDefined();
+
+    const passed = evaluateCondition(card!.condition, ["gamble", "stage"]);
+    const failedAtZero = evaluateCondition(card!.condition, ["family", "love"]);
+    const failedUnbalanced = evaluateCondition(card!.condition, [
+      "gamble",
+      "gamble",
+      "stage",
+    ]);
+
+    expect(passed.met).toBe(true);
+    expect(failedAtZero.met).toBe(false);
+    expect(failedUnbalanced.met).toBe(false);
+  });
+
   it("resolves a round and scores the best successful remaining card", () => {
     const state = createStateAtResolution(["family", "family", "love", "stage"]);
     const playerId = state.seats[0]!.id;
@@ -109,8 +128,40 @@ describe("core engine", () => {
     expect(getWinners(resolved).map((seat) => seat.id)).toContain(playerId);
   });
 
+  it("ends the game immediately when a family glory card scores", () => {
+    const state = createStateAtResolution([
+      "family",
+      "family",
+      "gang",
+      "gang",
+      "stage",
+      "gang",
+    ]);
+    const playerId = state.seats[0]!.id;
+    const gloryState: GameState = {
+      ...state,
+      seats: state.seats.map((seat) => ({ ...seat, score: 0 })),
+      playerRounds: {
+        ...state.playerRounds,
+        [playerId]: {
+          ...state.playerRounds[playerId]!,
+          hand: ["sonny-family-price", "botti-rising-star"],
+        },
+      },
+    };
+
+    const selected = selectScoringCard(gloryState, playerId, "sonny-family-price");
+    const resolved = resolveRound(selected);
+    const score = resolved.roundResults[0]!.scores[0]!;
+
+    expect(resolved.phase).toBe("game_over");
+    expect(resolved.seats[0]!.familyGlory).toBe(true);
+    expect(getWinners(resolved).map((seat) => seat.id)).toEqual([playerId]);
+    expect(score.bonusReasons).toContain("家族荣光");
+  });
+
   it("adds wager bonus when the wagered scoring card succeeds", () => {
-    const state = createStateAtResolution(["family", "family", "love"]);
+    const state = createStateAtResolution(["family", "family", "love", "stage"]);
     const playerId = state.seats[0]!.id;
     const cardId = "botti-rising-star";
     const wagered: GameState = {
@@ -129,11 +180,11 @@ describe("core engine", () => {
 
     expect(score.cardId).toBe(cardId);
     expect(score.bonusScore).toBe(1);
-    expect(score.bonusReasons).toContain("剧情下注 +1");
+    expect(score.bonusReasons).toContain("签署拍立得 +1");
   });
 
   it("prioritizes a wagered card when automatic scoring cards tie", () => {
-    const state = createStateAtResolution(["family", "family", "love"]);
+    const state = createStateAtResolution(["family", "family", "love", "stage"]);
     const playerId = state.seats[0]!.id;
     const wagered: GameState = {
       ...state,
@@ -141,8 +192,8 @@ describe("core engine", () => {
         ...state.playerRounds,
         [playerId]: {
           ...state.playerRounds[playerId]!,
-          hand: ["botti-rising-star", "natalia-mother-line"],
-          wageredCardId: "natalia-mother-line",
+          hand: ["botti-rising-star", "oscar-duet"],
+          wageredCardId: "oscar-duet",
         },
       },
     };
@@ -150,8 +201,8 @@ describe("core engine", () => {
     const resolved = resolveRound(wagered);
     const score = resolved.roundResults[0]!.scores[0]!;
 
-    expect(score.cardId).toBe("natalia-mother-line");
-    expect(score.bonusReasons).toContain("剧情下注 +1");
+    expect(score.cardId).toBe("oscar-duet");
+    expect(score.bonusReasons).toContain("签署拍立得 +1");
   });
 
   it("caps combined wager, role, and bond bonuses at the round bonus limit", () => {
@@ -180,6 +231,29 @@ describe("core engine", () => {
     expect(score.bonusScore).toBe(2);
     expect(score.totalScore).toBe(6);
     expect(score.bonusReasons).toContain("奖励上限 2");
+  });
+
+  it("adds bond bonus when only the scoring bonded card succeeds", () => {
+    const base = createStateAtResolution(["stage", "bar", "bar"]);
+    const playerId = base.seats[0]!.id;
+    const bondState: GameState = {
+      ...base,
+      playerRounds: {
+        ...base.playerRounds,
+        [playerId]: {
+          ...base.playerRounds[playerId]!,
+          hand: ["richard-drunk-door", "oscar-duet"],
+        },
+      },
+    };
+
+    const selected = selectScoringCard(bondState, playerId, "richard-drunk-door");
+    const resolved = resolveRound(selected);
+    const score = resolved.roundResults[0]!.scores[0]!;
+
+    expect(score.cardId).toBe("richard-drunk-door");
+    expect(score.bonusReasons).toContain("人物羁绊：舞台搭档 +1");
+    expect(score.bondIds).toEqual(["richard-oscar"]);
   });
 
   it("places a wager only in the second discard phase", () => {

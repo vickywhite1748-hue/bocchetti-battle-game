@@ -33,6 +33,19 @@ import type {
 } from "./game";
 
 const HUMAN_PLAYER_ID = "player-1";
+const APP_VERSION = "v1.2.0";
+const UPDATE_STORAGE_KEY = "bocchetti-battle-dismissed-version";
+const UPDATE_LOG_ITEMS = [
+  "Michele & Paulo 拆为 Mighele《草帽小红》和 Paulo《草帽小绿》。",
+  "新增羁绊“赌场主理人”和“父母爱情”。",
+  "新增“家族荣光”胜利牌。",
+  "新增“羁绊成就”，未解锁剧情显示为？？？。",
+  "达成羁绊时显示 2 秒解锁提示。",
+  "特殊规则页只保留羁绊玩法说明。",
+  "新增 A = B 型拍立得条件。",
+  "调整多张拍立得条件与分值，Gambino《赌场陷阱》改为 5 分命运牌。",
+  "新增页面内“更新记录”入口，同版本关闭后不再自动提示。",
+];
 
 const markerLabels: Record<MarkerCategory, string> = {
   family: "家族",
@@ -45,13 +58,13 @@ const markerLabels: Record<MarkerCategory, string> = {
 
 const phaseLabels: Record<RoundPhase, string> = {
   setup: "轮间",
-  draw_1: "第一幕抽取",
-  discard_1: "第一次弃牌",
-  draw_2: "第二幕抽取",
-  discard_2: "第二次弃牌",
-  draw_3: "第三幕抽取",
-  discard_3: "第三次弃牌",
-  draw_4: "终幕抽取",
+  draw_1: "第一幕抽取积点",
+  discard_1: "第一次弃置",
+  draw_2: "第二幕抽取积点",
+  discard_2: "第二次弃置",
+  draw_3: "第三幕抽取积点",
+  discard_3: "第三次弃置",
+  draw_4: "终幕抽取积点",
   resolution: "本轮结算",
   game_over: "游戏结束",
 };
@@ -67,6 +80,16 @@ export function App() {
     null,
   );
   const [message, setMessage] = useState<string | null>(null);
+  const [achievementMessage, setAchievementMessage] = useState<string | null>(
+    null,
+  );
+  const [updateLogOpen, setUpdateLogOpen] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    return window.localStorage.getItem(UPDATE_STORAGE_KEY) !== APP_VERSION;
+  });
 
   const humanRound = game?.playerRounds[HUMAN_PLAYER_ID];
   const humanSeat = game?.seats.find((seat) => seat.id === HUMAN_PLAYER_ID);
@@ -76,6 +99,7 @@ export function App() {
       : 0;
   const latestResult = game?.roundResults.at(-1) ?? null;
   const ghostwriterPending = Boolean(humanRound?.ghostwriterDiscardPending);
+  const unlockedBondIds = useMemo(() => getUnlockedBondIds(game), [game]);
 
   useEffect(() => {
     if (!message) {
@@ -88,6 +112,18 @@ export function App() {
 
     return () => window.clearTimeout(timer);
   }, [message]);
+
+  useEffect(() => {
+    if (!achievementMessage) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setAchievementMessage(null);
+    }, 2000);
+
+    return () => window.clearTimeout(timer);
+  }, [achievementMessage]);
 
   const markerCounts = useMemo(() => {
     const counts = Object.fromEntries(
@@ -121,6 +157,17 @@ export function App() {
     safely(() => createGame({ playerCount, humanRoleId: roleId }));
   }
 
+  function openUpdateLog() {
+    setUpdateLogOpen(true);
+  }
+
+  function closeUpdateLog() {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(UPDATE_STORAGE_KEY, APP_VERSION);
+    }
+    setUpdateLogOpen(false);
+  }
+
   function drawStep() {
     if (!game) {
       return;
@@ -148,7 +195,7 @@ export function App() {
 
   function submitGhostwriterDiscard() {
     if (!game || selectedCards.length !== 1) {
-      setMessage("请选择 1 张人物作为代笔人技能弃牌。");
+      setMessage("请选择 1 张角色拍立得作为代笔人技能弃置。");
       return;
     }
 
@@ -157,7 +204,7 @@ export function App() {
       setGame(next);
       setSelectedCards([]);
       setSelectedScoringCard(null);
-      setMessage("代笔人技能弃牌完成；现在请继续完成本阶段正常弃牌。");
+      setMessage("代笔人技能弃置完成；现在请继续完成本阶段正常弃置。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     }
@@ -165,7 +212,7 @@ export function App() {
 
   function submitWager() {
     if (!game || selectedCards.length !== 1) {
-      setMessage("请选择 1 张人物卡下注。");
+      setMessage("请选择 1 张角色拍立得签署。");
       return;
     }
 
@@ -193,12 +240,12 @@ export function App() {
           setGame(next);
           setSelectedCards([]);
           setSelectedScoringCard(null);
-          setMessage("代笔人已先抽 1 张人物；请从当前手牌中选择 1 张作为技能弃牌。");
+          setMessage("代笔人已先抽 1 张角色拍立得；请从当前持有的拍立得中选择 1 张作为技能弃置。");
           return;
         }
         case "stage_manager":
           if (selectedCards.length !== 1) {
-            setMessage("请选择 1 张人物作为舞台监督的排演对象。");
+            setMessage("请选择 1 张角色拍立得作为舞台监督的排演对象。");
             return;
           }
           next = useStageManagerAbility(game, HUMAN_PLAYER_ID, selectedCards[0]!);
@@ -240,8 +287,14 @@ export function App() {
       if (scoringCardId) {
         next = selectScoringCard(next, HUMAN_PLAYER_ID, scoringCardId);
       }
+      const previousUnlockedBondIds = getUnlockedBondIds(game);
       next = runAiForCurrentDecision(next);
-      return resolveRound(next);
+      const resolved = resolveRound(next);
+      const unlockedNames = getNewUnlockedBondNames(previousUnlockedBondIds, resolved);
+      if (unlockedNames.length > 0) {
+        setAchievementMessage(`解锁羁绊成就：${unlockedNames.join("、")}`);
+      }
+      return resolved;
     });
   }
 
@@ -278,10 +331,15 @@ export function App() {
       <main className="app-shell">
         <section className="setup-panel">
           <div>
-            <p className="eyebrow">V1 规则灰盒</p>
             <div className="game-title-row">
               <h1>战斗吧！Bocchetti！</h1>
               <span>FROM @真理追赶交替</span>
+            </div>
+            <div className="version-row">
+              <span className="version-pill">{APP_VERSION}</span>
+              <button className="text-action" onClick={openUpdateLog}>
+                更新记录
+              </button>
             </div>
           </div>
 
@@ -301,7 +359,7 @@ export function App() {
             </label>
 
             <label className="field">
-              <span>玩家角色</span>
+              <span>观众角色</span>
               <select
                 value={roleId}
                 onChange={(event) =>
@@ -317,18 +375,7 @@ export function App() {
             </label>
           </div>
 
-          <div className="role-list">
-            {PLAYER_ROLES.map((role) => (
-              <article
-                className={role.id === roleId ? "role-card active" : "role-card"}
-                key={role.id}
-              >
-                <strong>{role.name}</strong>
-                <span>{role.shortName}</span>
-                <p>{role.abilityText}</p>
-              </article>
-            ))}
-          </div>
+          <SelectedRoleIntro roleId={roleId} />
 
           <button className="secondary-action" onClick={() => setRulesOpen(true)}>
             游戏规则
@@ -338,7 +385,13 @@ export function App() {
             开始对局
           </button>
         </section>
-        {rulesOpen && <RulesModal onClose={() => setRulesOpen(false)} />}
+        {rulesOpen && (
+          <RulesModal
+            onClose={() => setRulesOpen(false)}
+            unlockedBondIds={unlockedBondIds}
+          />
+        )}
+        {updateLogOpen && <UpdateLogPopover onClose={closeUpdateLog} />}
       </main>
     );
   }
@@ -349,6 +402,12 @@ export function App() {
         <div>
           <p className="eyebrow">第 {game.round} 轮</p>
           <h1>{phaseLabels[game.phase]}</h1>
+          <div className="version-row">
+            <span className="version-pill">{APP_VERSION}</span>
+            <button className="text-action" onClick={openUpdateLog}>
+              更新记录
+            </button>
+          </div>
         </div>
         <div className="top-actions">
           <button onClick={() => setRulesOpen(true)}>游戏规则</button>
@@ -359,11 +418,6 @@ export function App() {
           {game.phase === "setup" && (
             <button className="primary-action" onClick={beginNextRound}>
               开始下一轮
-            </button>
-          )}
-          {isDrawPhase(game.phase) && (
-            <button className="primary-action" onClick={drawStep}>
-              抽取剧情标记
             </button>
           )}
           {game.phase === "resolution" && (
@@ -379,6 +433,14 @@ export function App() {
           {message}
         </div>
       )}
+
+      {achievementMessage && (
+        <div className="achievement-toast" role="status">
+          {achievementMessage}
+        </div>
+      )}
+
+      {updateLogOpen && <UpdateLogPopover onClose={closeUpdateLog} />}
 
       <section className="score-row">
         {game.seats.map((seat) => (
@@ -399,13 +461,18 @@ export function App() {
         <section className="board-panel">
           <div className="panel-heading">
             <div>
-              <h2>剧情标记</h2>
+              <h2>积点</h2>
               <span>已抽 {game.drawnMarkers.length} / 10</span>
             </div>
+            {isDrawPhase(game.phase) && (
+              <button className="primary-action" onClick={drawStep}>
+                抽取积点
+              </button>
+            )}
           </div>
           <div className="marker-pile">
             {game.drawnMarkers.length === 0 && (
-              <span className="empty-state">等待第一幕抽取</span>
+              <span className="empty-state">等待第一幕抽取积点</span>
             )}
             {game.drawnMarkers.map((marker, index) => (
               <span className={`marker marker-${marker}`} key={`${marker}-${index}`}>
@@ -451,37 +518,37 @@ export function App() {
               <article className="result-card" key={score.playerId}>
                 <strong>{getSeatLabel(game, score.playerId)}</strong>
                 <span>{score.cardId ? getCardById(score.cardId).name : "未得分"}</span>
-                <b>+{score.totalScore}</b>
+                <b>{formatRoundScore(score)}</b>
                 <small>{score.bonusReasons.join(" / ") || score.reason}</small>
               </article>
             ))}
           </div>
         </section>
       )}
-      {rulesOpen && <RulesModal onClose={() => setRulesOpen(false)} />}
+      {rulesOpen && (
+        <RulesModal
+          onClose={() => setRulesOpen(false)}
+          unlockedBondIds={unlockedBondIds}
+        />
+      )}
 
       {game.phase === "game_over" && (
-        <section className="result-panel">
-          <div className="panel-heading">
-            <h2>胜者</h2>
-          </div>
-          <p>{getWinners(game).map((seat) => seat.name).join("、")}</p>
-        </section>
+        <FinalResults game={game} />
       )}
 
       {humanRound && game.phase !== "setup" && game.phase !== "game_over" && (
         <section className="hand-panel">
           <div className="panel-heading">
             <div>
-              <h2>你的手牌</h2>
+              <h2>你的拍立得</h2>
               {isDiscardPhase(game.phase) && (
-                <span>本阶段需要弃 {requiredDiscards} 张</span>
+                <span>本阶段需要弃置 {requiredDiscards} 张</span>
               )}
               {ghostwriterPending && (
-                <span>代笔人待弃：请选择 1 张技能弃牌</span>
+                <span>代笔人待弃置：请选择 1 张技能弃置</span>
               )}
               {game.phase === "resolution" && (
-                <span>请选择 1 张成功人物作为本轮计分人物</span>
+                <span>请选择 1 张成功角色拍立得作为本轮计分拍立得</span>
               )}
             </div>
             <div className="hand-actions">
@@ -498,15 +565,15 @@ export function App() {
                   {humanSeat?.roleId === "ghostwriter"
                     ? "代笔：先抽1张"
                     : humanSeat?.roleId === "stage_manager"
-                      ? "排演所选人物"
+                      ? "排演所选拍立得"
                       : "使用技能"}
                 </button>
               )}
               {game.phase === "discard_2" && !ghostwriterPending && (
                 humanRound.wageredCardId ? (
-                  <button onClick={submitCancelWager}>取消下注</button>
+                  <button onClick={submitCancelWager}>取消签署</button>
                 ) : (
-                  <button onClick={submitWager}>剧情下注</button>
+                  <button onClick={submitWager}>签署拍立得</button>
                 )
               )}
               {isDiscardPhase(game.phase) && (
@@ -517,7 +584,7 @@ export function App() {
                   }
                   onClick={submitDiscards}
                 >
-                  {ghostwriterPending ? "确认代笔弃牌" : "确认弃牌"}
+                  {ghostwriterPending ? "确认代笔弃置" : "确认弃置"}
                 </button>
               )}
             </div>
@@ -562,8 +629,13 @@ export function App() {
   );
 }
 
-function RulesModal(props: { onClose: () => void }) {
-  const [activeTab, setActiveTab] = useState<"basic" | "skills" | "special">(
+function RulesModal(props: {
+  onClose: () => void;
+  unlockedBondIds: Set<string>;
+}) {
+  const [activeTab, setActiveTab] = useState<
+    "basic" | "skills" | "special" | "bonds"
+  >(
     "basic",
   );
 
@@ -594,14 +666,60 @@ function RulesModal(props: { onClose: () => void }) {
             className={activeTab === "skills" ? "active" : ""}
             onClick={() => setActiveTab("skills")}
           >
-            玩家技能
+            观众技能
+          </button>
+          <button
+            className={activeTab === "bonds" ? "active" : ""}
+            onClick={() => setActiveTab("bonds")}
+          >
+            羁绊成就
           </button>
         </div>
         {activeTab === "basic" && <BasicRules />}
         {activeTab === "special" && <SpecialRules />}
         {activeTab === "skills" && <SkillRules />}
+        {activeTab === "bonds" && (
+          <BondAchievements unlockedBondIds={props.unlockedBondIds} />
+        )}
       </section>
     </div>
+  );
+}
+
+function SelectedRoleIntro(props: { roleId: PlayerRoleId }) {
+  const role = PLAYER_ROLES.find((item) => item.id === props.roleId);
+
+  if (!role) {
+    return null;
+  }
+
+  return (
+    <article className="role-card active selected-role-card">
+      <div className="selected-role-heading">
+        <strong>{role.name}</strong>
+        <span>{role.shortName}</span>
+      </div>
+      <p>{role.timing}</p>
+      <p>{role.abilityText}</p>
+      <small>{role.strategyText}</small>
+    </article>
+  );
+}
+
+function UpdateLogPopover(props: { onClose: () => void }) {
+  return (
+    <aside className="update-log-popover" role="status">
+      <div>
+        <span>{APP_VERSION}</span>
+        <button onClick={props.onClose}>关闭</button>
+      </div>
+      <h2>更新记录</h2>
+      <ul>
+        {UPDATE_LOG_ITEMS.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </aside>
   );
 }
 
@@ -611,29 +729,29 @@ function BasicRules() {
       <article>
         <h3>每轮流程</h3>
         <p>
-          每名玩家抽 5 张人物目标卡。剧情标记按 4、3、2、1
-          分四幕抽出，每次抽完后玩家弃牌，最终保留 2 张人物进入结算。
+          每名观众抽 5 张角色拍立得。积点按 4、3、2、1
+          分四幕抽出，每次抽完后观众弃置，最终保留 2 张拍立得进入结算。
         </p>
         <p>
-          结算时每名玩家最多选择 1 张满足条件的人物得分；若没有满足条件的人物，本轮不得分。
-        </p>
-      </article>
-      <article>
-        <h3>下注和奖励</h3>
-        <p>
-          第二次弃牌阶段可以对 1 张手牌进行剧情下注。若该人物最终成功计分，额外 +1。
-        </p>
-        <p>
-          人物羁绊、下注和角色技能奖励共享每轮奖励上限，单轮额外分最高为 2。
+          结算时每名观众最多选择 1 张满足条件的拍立得得分；若没有满足条件的拍立得，本轮不得分。
         </p>
       </article>
       <article>
-        <h3>标记池</h3>
+        <h3>签署和奖励</h3>
         <p>
-          V1 当前标记池共 18 枚，每轮抽 10 枚。标记越早被抽出，后续继续追同类标记的风险越高。
+          第二次弃置阶段可以签署 1 张当前持有的角色拍立得。若该拍立得最终成功计分，额外 +1。
         </p>
         <p>
-          主界面只显示已抽出的标记和每类已抽数量，玩家需要根据牌面自行判断是否继续赌。
+          人物羁绊、签署拍立得和角色技能奖励共享每轮奖励上限，单轮额外分最高为 2。
+        </p>
+      </article>
+      <article>
+        <h3>积点池</h3>
+        <p>
+          V1 当前积点池共 18 枚，每轮抽 10 枚。积点越早被抽出，后续继续追同类积点的风险越高。
+        </p>
+        <p>
+          每轮会重新洗一整袋积点；主界面只显示已抽出的积点和每类已抽数量。
         </p>
       </article>
     </div>
@@ -642,43 +760,46 @@ function BasicRules() {
 
 function SpecialRules() {
   return (
-    <>
-      <div className="info-grid special-rule-grid">
-        <article>
-          <h3>人物羁绊</h3>
-          <p>
-            羁绊要求两张相关人物同时留在最终手牌并满足条件，适合在已有标记趋势明确后再追。
-          </p>
-        </article>
-        <article>
-          <h3>奖励上限</h3>
-          <p>
-            羁绊、下注和角色技能奖励共享每轮奖励上限。即使触发多个奖励，单轮额外分最高为 2。
-          </p>
-        </article>
-      </div>
-      <div className="bond-grid">
-        {BOND_RULES.map((bond) => {
-          const left = getCardById(bond.characterIds[0]);
-          const right = getCardById(bond.characterIds[1]);
+    <div className="info-grid special-rule-grid">
+      <article>
+        <h3>人物羁绊</h3>
+        <p>
+          羁绊要求两张相关角色拍立得同时留到结算；只要计分拍立得满足条件，即可获得该组羁绊分。
+        </p>
+        <p>
+          成功触发过的羁绊会解锁为羁绊成就；未解锁前，成就页只显示组合和奖励，剧情解说保持隐藏。
+        </p>
+      </article>
+    </div>
+  );
+}
 
-          return (
-            <article className="bond-card" key={bond.id}>
-              <div>
-                <strong>{bond.name}</strong>
-                <span>+{bond.bonus}</span>
-              </div>
-              <p>
-                {left.name}《{left.versionTitle}》 + {right.name}《
-                {right.versionTitle}》
-              </p>
-              <small>{bond.conditionText}</small>
-              <em>{bond.storyText}</em>
-            </article>
-          );
-        })}
-      </div>
-    </>
+function BondAchievements(props: { unlockedBondIds: Set<string> }) {
+  return (
+    <div className="bond-grid">
+      {BOND_RULES.map((bond) => {
+        const left = getCardById(bond.characterIds[0]);
+        const right = getCardById(bond.characterIds[1]);
+        const unlocked = props.unlockedBondIds.has(bond.id);
+
+        return (
+          <article
+            className={unlocked ? "bond-card unlocked" : "bond-card locked"}
+            key={bond.id}
+          >
+            <div>
+              <strong>{bond.name}</strong>
+              <span>{unlocked ? "已解锁" : `+${bond.bonus}`}</span>
+            </div>
+            <p>
+              {left.name}《{left.versionTitle}》 + {right.name}《
+              {right.versionTitle}》
+            </p>
+            <em>{unlocked ? bond.storyText : "？？？"}</em>
+          </article>
+        );
+      })}
+    </div>
   );
 }
 
@@ -694,6 +815,55 @@ function SkillRules() {
         </article>
       ))}
     </div>
+  );
+}
+
+function FinalResults(props: { game: GameState }) {
+  const latestResult = props.game.roundResults.at(-1);
+  const winners = new Set(getWinners(props.game).map((seat) => seat.id));
+  const ranking = [...props.game.seats].sort(
+    (left, right) =>
+      Number(right.familyGlory) - Number(left.familyGlory) ||
+      right.score - left.score ||
+      left.name.localeCompare(right.name),
+  );
+
+  return (
+    <section className="result-panel final-results">
+      <div className="panel-heading">
+        <div>
+          <h2>最终结算</h2>
+          <span>按总分从高到低排序</span>
+        </div>
+        <strong>{getWinners(props.game).map((seat) => seat.name).join("、")} 获胜</strong>
+      </div>
+      <div className="final-ranking">
+        {ranking.map((seat, index) => {
+          const lastScore = latestResult?.scores.find(
+            (score) => score.playerId === seat.id,
+          );
+          const scoringCard = lastScore?.cardId ? getCardById(lastScore.cardId) : null;
+
+          return (
+            <article
+              className={winners.has(seat.id) ? "final-row winner" : "final-row"}
+              key={seat.id}
+            >
+              <b>#{index + 1}</b>
+              <div>
+                <strong>{seat.name}</strong>
+                <span>{getRoleName(seat.roleId)}</span>
+              </div>
+              <strong>{seat.familyGlory ? "家族荣光" : `${seat.score} 分`}</strong>
+              <small>
+                最后一轮 {lastScore ? formatRoundScore(lastScore) : "+0"}
+                {scoringCard ? ` / ${scoringCard.name}《${scoringCard.versionTitle}》` : ""}
+              </small>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -720,7 +890,7 @@ function CharacterCardView(props: {
 }) {
   const className = [
     "character-card",
-    props.selected ? "selected" : "",
+    props.selected ? `selected selected-${props.mode}` : "",
     props.bondNames.length > 0 ? "bond-ready" : "",
   ]
     .filter(Boolean)
@@ -732,11 +902,11 @@ function CharacterCardView(props: {
       onClick={props.onClick}
       type="button"
     >
-      <div className="portrait-placeholder">{props.card.portraitKey}</div>
+      <div className="portrait-placeholder">{props.card.name}</div>
       <div className="card-body">
         <div className="card-title-row">
           <strong>{props.card.name}</strong>
-          <span>{props.card.score} 分</span>
+          <span>{formatCardScore(props.card)}</span>
         </div>
         <p>{props.card.versionTitle}</p>
         <small>{conditionSummary(props.card.condition)}</small>
@@ -750,9 +920,13 @@ function CharacterCardView(props: {
           <b className={props.evaluationMet ? "status met" : "status pending"}>
             {props.evaluationMet ? "已满足" : "未满足"}
           </b>
-          {props.wagered && <b className="status wager">已下注</b>}
+          {props.wagered && <b className="status wager">已签署</b>}
           {props.stageManaged && <b className="status stage-managed">已排演</b>}
-          <b className="status">{props.mode === "score" ? "计分" : "取舍"}</b>
+          {props.selected && (
+            <b className={props.mode === "score" ? "status action" : "status discard"}>
+              {props.mode === "score" ? "待计分" : "待弃置"}
+            </b>
+          )}
         </div>
       </div>
     </button>
@@ -767,12 +941,32 @@ function getHandBondNames(hand: readonly string[], cardId: string): string[] {
   ).map((bond) => bond.name);
 }
 
+function getUnlockedBondIds(game: GameState | null): Set<string> {
+  return new Set(
+    game?.roundResults.flatMap((result) =>
+      result.scores.flatMap((score) => score.bondIds),
+    ) ?? [],
+  );
+}
+
+function getNewUnlockedBondNames(
+  previousUnlockedBondIds: Set<string>,
+  game: GameState,
+): string[] {
+  return [...getUnlockedBondIds(game)]
+    .filter((bondId) => !previousUnlockedBondIds.has(bondId))
+    .map((bondId) => BOND_RULES.find((bond) => bond.id === bondId)?.name)
+    .filter((name): name is string => Boolean(name));
+}
+
 function conditionSummary(condition: Condition): string {
   switch (condition.type) {
     case "minCount":
       return `${markerLabels[condition.marker]} >= ${condition.count}`;
     case "maxCount":
       return `${markerLabels[condition.marker]} <= ${condition.count}`;
+    case "equalCount":
+      return `${markerLabels[condition.marker]} = ${markerLabels[condition.otherMarker]}`;
     case "lastIs":
       return `最后 = ${markerLabels[condition.marker]}`;
     case "allOf":
@@ -856,4 +1050,14 @@ function getRoleName(roleId: PlayerRoleId): string {
 
 function getSeatLabel(game: GameState, playerId: string): string {
   return game.seats.find((seat) => seat.id === playerId)?.name ?? playerId;
+}
+
+function formatCardScore(card: CharacterCard): string {
+  return card.score === "family_glory" ? "家族荣光" : `${card.score} 分`;
+}
+
+function formatRoundScore(score: { totalScore: number; bonusSources: string[] }): string {
+  return score.bonusSources.includes("family_glory")
+    ? "家族荣光"
+    : `+${score.totalScore}`;
 }

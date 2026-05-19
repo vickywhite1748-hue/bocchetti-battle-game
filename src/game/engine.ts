@@ -109,11 +109,11 @@ export function drawCurrentStep(state: GameState): GameState {
   const drawCount = DRAW_STEPS[drawIndex];
 
   if (drawCount === undefined) {
-    throw new Error(`当前阶段不能抽标记：${state.phase}`);
+    throw new Error(`当前阶段不能抽取积点：${state.phase}`);
   }
 
   if (state.markerBag.length < drawCount) {
-    throw new Error("标记袋数量不足。");
+    throw new Error("积点袋数量不足。");
   }
 
   const drawn = state.markerBag.slice(0, drawCount);
@@ -129,7 +129,7 @@ export function drawCurrentStep(state: GameState): GameState {
     phase: nextPhase,
     markerBag,
     drawnMarkers: [...state.drawnMarkers, ...drawn],
-    log: [...state.log, `抽出 ${drawn.length} 枚剧情标记。`],
+    log: [...state.log, `抽出 ${drawn.length} 枚积点。`],
   };
 }
 
@@ -140,17 +140,17 @@ export function discardCards(
 ): GameState {
   const playerRound = getPlayerRound(state, playerId);
   if (playerRound.ghostwriterDiscardPending) {
-    throw new Error("请先完成代笔人的技能弃牌。");
+    throw new Error("请先完成代笔人的技能弃置。");
   }
   const required = getRequiredDiscardCount(state, playerId);
 
   if (cardIds.length !== required) {
-    throw new Error(`当前阶段必须弃 ${required} 张人物卡。`);
+    throw new Error(`当前阶段必须弃置 ${required} 张角色拍立得。`);
   }
 
   for (const cardId of cardIds) {
     if (!playerRound.hand.includes(cardId)) {
-      throw new Error(`玩家没有这张人物卡：${cardId}`);
+      throw new Error(`观众没有这张角色拍立得：${cardId}`);
     }
   }
 
@@ -176,7 +176,7 @@ export function discardCards(
       [playerId]: nextRound,
     },
     discardPile: [...state.discardPile, ...cardIds],
-    log: [...state.log, `${getSeatName(state, playerId)} 弃掉 ${cardIds.length} 张人物。`],
+    log: [...state.log, `${getSeatName(state, playerId)} 弃置 ${cardIds.length} 张角色拍立得。`],
   };
 }
 
@@ -186,16 +186,16 @@ export function placeWager(
   cardId: string,
 ): GameState {
   if (state.phase !== "discard_2") {
-    throw new Error("只能在第二次抽标记后的弃牌阶段下注。");
+    throw new Error("只能在第二次抽取积点后的弃置阶段签署拍立得。");
   }
 
   const playerRound = getPlayerRound(state, playerId);
   if (!playerRound.hand.includes(cardId)) {
-    throw new Error(`玩家没有这张人物卡：${cardId}`);
+    throw new Error(`观众没有这张角色拍立得：${cardId}`);
   }
 
   if (playerRound.wageredCardId) {
-    throw new Error("本轮已经下注。");
+    throw new Error("本轮已经签署拍立得。");
   }
 
   return {
@@ -207,18 +207,18 @@ export function placeWager(
         wageredCardId: cardId,
       },
     },
-    log: [...state.log, `${getSeatName(state, playerId)} 进行了剧情下注。`],
+    log: [...state.log, `${getSeatName(state, playerId)} 签署了 1 张角色拍立得。`],
   };
 }
 
 export function cancelWager(state: GameState, playerId: string): GameState {
   if (state.phase !== "discard_2") {
-    throw new Error("只能在第二次抽标记后的弃牌阶段取消下注。");
+    throw new Error("只能在第二次抽取积点后的弃置阶段取消签署。");
   }
 
   const playerRound = getPlayerRound(state, playerId);
   if (!playerRound.wageredCardId) {
-    throw new Error("本轮还没有下注。");
+    throw new Error("本轮还没有签署拍立得。");
   }
 
   return {
@@ -230,7 +230,7 @@ export function cancelWager(state: GameState, playerId: string): GameState {
         wageredCardId: null,
       },
     },
-    log: [...state.log, `${getSeatName(state, playerId)} 取消了剧情下注。`],
+    log: [...state.log, `${getSeatName(state, playerId)} 取消了签署拍立得。`],
   };
 }
 
@@ -245,13 +245,13 @@ export function useGhostwriterAbility(
   }
   assertCanUseRoleAbility(state, playerId);
   if (state.phase !== "discard_1" && state.phase !== "discard_2") {
-    throw new Error("代笔人只能在前两次弃牌阶段使用。");
+    throw new Error("代笔人只能在前两次弃置阶段使用。");
   }
 
   const deck = ensureDeckHasCards(state.characterDeck, state.discardPile, 1, random);
   const drawnCard = deck.characterDeck[0];
   if (!drawnCard) {
-    throw new Error("人物牌堆为空。");
+    throw new Error("角色拍立得牌堆为空。");
   }
 
   const playerRound = getPlayerRound(state, playerId);
@@ -268,7 +268,7 @@ export function useGhostwriterAbility(
         ghostwriterDiscardPending: true,
       },
     },
-    log: [...state.log, `${seat.name} 使用代笔人技能抽了 1 张人物。`],
+    log: [...state.log, `${seat.name} 使用代笔人技能抽了 1 张角色拍立得。`],
   };
 }
 
@@ -279,16 +279,16 @@ export function discardGhostwriterCard(
 ): GameState {
   const seat = getSeat(state, playerId);
   if (seat.roleId !== "ghostwriter") {
-    throw new Error("只有代笔人可以进行该弃牌。");
+    throw new Error("只有代笔人可以进行该弃置。");
   }
   assertDiscardPhase(state.phase);
 
   const playerRound = getPlayerRound(state, playerId);
   if (!playerRound.ghostwriterDiscardPending) {
-    throw new Error("当前没有待处理的代笔人弃牌。");
+    throw new Error("当前没有待处理的代笔人弃置。");
   }
   if (!playerRound.hand.includes(discardCardId)) {
-    throw new Error(`玩家没有这张人物卡：${discardCardId}`);
+    throw new Error(`观众没有这张角色拍立得：${discardCardId}`);
   }
 
   return {
@@ -310,7 +310,7 @@ export function discardGhostwriterCard(
       },
     },
     discardPile: [...state.discardPile, discardCardId],
-    log: [...state.log, `${seat.name} 完成了代笔人弃牌。`],
+    log: [...state.log, `${seat.name} 完成了代笔人弃置。`],
   };
 }
 
@@ -324,13 +324,13 @@ export function useStageManagerAbility(
     throw new Error("只有舞台监督可以使用该技能。");
   }
   if (state.phase !== "discard_1") {
-    throw new Error("舞台监督只能在第一次弃牌阶段排演。");
+    throw new Error("舞台监督只能在第一次弃置阶段排演。");
   }
   assertCanUseRoleAbility(state, playerId);
 
   const playerRound = getPlayerRound(state, playerId);
   if (!playerRound.hand.includes(cardId)) {
-    throw new Error(`玩家没有这张人物卡：${cardId}`);
+    throw new Error(`观众没有这张角色拍立得：${cardId}`);
   }
   const card = getCardById(cardId);
 
@@ -357,7 +357,7 @@ export function useCasinoBackerAbility(
     throw new Error("只有赌场投资人可以使用该技能。");
   }
   if (state.phase !== "discard_2") {
-    throw new Error("赌场投资人只能在第二次抽标记后押赌局。");
+    throw new Error("赌场投资人只能在第二次抽取积点后押赌局。");
   }
   assertCanUseRoleAbility(state, playerId);
 
@@ -388,7 +388,7 @@ export function useBartenderAbility(
   assertDiscardPhase(state.phase);
 
   if (state.phase === "discard_3") {
-    throw new Error("V1 中吧台人必须在前两次弃牌阶段使用。");
+    throw new Error("V1 中吧台人必须在前两次弃置阶段使用。");
   }
 
   const playerRound = getPlayerRound(state, playerId);
@@ -403,13 +403,13 @@ export function useBartenderAbility(
         currentDiscardReduction: playerRound.currentDiscardReduction + 1,
       },
     },
-    log: [...state.log, `${seat.name} 延迟了 1 张弃牌。`],
+    log: [...state.log, `${seat.name} 延迟了 1 张弃置。`],
   };
 }
 
 export function advanceAfterDiscards(state: GameState): GameState {
   if (!allPlayersAtExpectedHandSize(state)) {
-    throw new Error("仍有玩家未完成当前弃牌。");
+    throw new Error("仍有观众未完成当前弃置。");
   }
 
   const nextPhase = NEXT_DRAW_PHASE[state.phase];
@@ -438,12 +438,12 @@ export function selectScoringCard(
   cardId: string,
 ): GameState {
   if (state.phase !== "resolution") {
-    throw new Error("只能在结算阶段选择计分人物。");
+    throw new Error("只能在结算阶段选择计分拍立得。");
   }
 
   const playerRound = getPlayerRound(state, playerId);
   if (!playerRound.hand.includes(cardId)) {
-    throw new Error(`玩家没有这张人物卡：${cardId}`);
+    throw new Error(`观众没有这张角色拍立得：${cardId}`);
   }
 
   return {
@@ -467,18 +467,21 @@ export function resolveRound(state: GameState): GameState {
   const updatedSeats = state.seats.map((seat) => {
     const score = scores.find((item) => item.playerId === seat.id);
     if (!score) {
-      throw new Error(`缺少玩家结算：${seat.id}`);
+      throw new Error(`缺少观众结算：${seat.id}`);
     }
     return {
       ...seat,
       score: seat.score + score.totalScore,
+      familyGlory: seat.familyGlory || score.bonusSources.includes("family_glory"),
     };
   });
   const result: RoundResult = {
     round: state.round,
     scores,
   };
-  const hasWinner = updatedSeats.some((seat) => seat.score >= state.victoryScore);
+  const hasWinner = updatedSeats.some(
+    (seat) => seat.familyGlory || seat.score >= state.victoryScore,
+  );
   const returnedFinalHands = state.seats.flatMap(
     (seat) => state.playerRounds[seat.id]?.hand ?? [],
   );
@@ -496,7 +499,7 @@ export function resolveRound(state: GameState): GameState {
 export function getCardById(cardId: string): CharacterCard {
   const card = CHARACTER_CARDS.find((item) => item.id === cardId);
   if (!card) {
-    throw new Error(`未知人物卡：${cardId}`);
+    throw new Error(`未知角色拍立得：${cardId}`);
   }
   return card;
 }
@@ -504,6 +507,11 @@ export function getCardById(cardId: string): CharacterCard {
 export function getWinners(state: GameState): PlayerSeat[] {
   if (state.phase !== "game_over") {
     return [];
+  }
+
+  const gloryWinners = state.seats.filter((seat) => seat.familyGlory);
+  if (gloryWinners.length > 0) {
+    return gloryWinners;
   }
 
   const maxScore = Math.max(...state.seats.map((seat) => seat.score));
@@ -526,14 +534,14 @@ export function estimateCardValue(
   const evaluation = evaluateCardConditionForPlayer(state, playerId, cardId);
 
   if (evaluation.met) {
-    return card.score + getPotentialBonusEstimate(state, playerId, cardId);
+    return getCardScoreValue(card) + getPotentialBonusEstimate(state, playerId, cardId);
   }
 
   if (state.drawnMarkers.length >= 10) {
     return 0;
   }
 
-  return card.score * 0.45 + getPotentialBonusEstimate(state, playerId, cardId);
+  return getCardScoreValue(card) * 0.45 + getPotentialBonusEstimate(state, playerId, cardId);
 }
 
 export function evaluateCardConditionForPlayer(
@@ -558,9 +566,10 @@ function createSeats(
   return Array.from({ length: playerCount }, (_, index) => ({
     id: `player-${index + 1}`,
     kind: index === 0 ? "human" : "ai",
-    name: index === 0 ? "玩家" : `AI ${index}`,
+    name: index === 0 ? "观众" : `AI ${index}`,
     roleId: index === 0 ? humanRoleId : aiRoles[(index - 1) % aiRoles.length]!,
     score: 0,
+    familyGlory: false,
   }));
 }
 
@@ -613,7 +622,7 @@ function getBaseDiscardCount(phase: RoundPhase): number {
     case "discard_3":
       return 1;
     default:
-      throw new Error(`当前阶段不能弃牌：${phase}`);
+      throw new Error(`当前阶段不能弃置：${phase}`);
   }
 }
 
@@ -626,7 +635,7 @@ function getExpectedHandSize(phase: RoundPhase): number {
     case "discard_3":
       return FINAL_HAND_SIZE;
     default:
-      throw new Error(`当前阶段不需要检查弃牌：${phase}`);
+      throw new Error(`当前阶段不需要检查弃置：${phase}`);
   }
 }
 
@@ -646,7 +655,7 @@ function getPlayerRound(
 ): PlayerRoundState {
   const playerRound = state.playerRounds[playerId];
   if (!playerRound) {
-    throw new Error(`缺少玩家回合状态：${playerId}`);
+    throw new Error(`缺少观众回合状态：${playerId}`);
   }
   return playerRound;
 }
@@ -658,7 +667,7 @@ function getSeatName(state: GameState, playerId: string): string {
 function getSeat(state: GameState, playerId: string): PlayerSeat {
   const seat = state.seats.find((item) => item.id === playerId);
   if (!seat) {
-    throw new Error(`未知玩家：${playerId}`);
+    throw new Error(`未知观众：${playerId}`);
   }
   return seat;
 }
@@ -683,7 +692,7 @@ function scorePlayer(state: GameState, playerId: string): ScoringBreakdown {
       (left, right) =>
         getAutomaticScoringValue(state, playerId, right.card, playerRound.hand) -
           getAutomaticScoringValue(state, playerId, left.card, playerRound.hand) ||
-        right.card.score - left.card.score,
+        getCardScoreValue(right.card) - getCardScoreValue(left.card),
     )[0];
 
   if (!scored) {
@@ -694,9 +703,10 @@ function scorePlayer(state: GameState, playerId: string): ScoringBreakdown {
       bonusScore: 0,
       totalScore: 0,
       success: false,
-      reason: "没有满足条件的人物。",
+      reason: "没有满足条件的角色拍立得。",
       bonusReasons: [],
       bonusSources: [],
+      bondIds: [],
     };
   }
 
@@ -704,9 +714,24 @@ function scorePlayer(state: GameState, playerId: string): ScoringBreakdown {
   const bonusSources: BonusSource[] = [];
   let bonusScore = 0;
 
+  if (scored.card.score === "family_glory") {
+    return {
+      playerId,
+      cardId: scored.card.id,
+      baseScore: 0,
+      bonusScore: 0,
+      totalScore: 0,
+      success: true,
+      reason: scored.evaluation.reason,
+      bonusReasons: ["家族荣光"],
+      bonusSources: ["family_glory"],
+      bondIds: [],
+    };
+  }
+
   if (playerRound.wageredCardId === scored.card.id) {
     bonusScore += 1;
-    bonusReasons.push("剧情下注 +1");
+    bonusReasons.push("签署拍立得 +1");
     bonusSources.push("wager");
   }
 
@@ -715,7 +740,7 @@ function scorePlayer(state: GameState, playerId: string): ScoringBreakdown {
     seat.roleId === "casino_backer" &&
     playerRound.casinoBackerDeclared &&
     scored.card.tags.includes("gamble") &&
-    scored.card.score >= 4 &&
+    getCardScoreValue(scored.card) >= 4 &&
     playerRound.wageredCardId !== scored.card.id
   ) {
     bonusScore += 1;
@@ -723,10 +748,10 @@ function scorePlayer(state: GameState, playerId: string): ScoringBreakdown {
     bonusSources.push("casino_backer");
   }
 
-  const bondBonus = getBondBonus(state, playerId, scored.card.id, playerRound.hand);
-  if (bondBonus > 0) {
-    bonusScore += bondBonus;
-    bonusReasons.push(`人物羁绊 +${bondBonus}`);
+  const activeBond = getActiveBond(state, playerId, scored.card.id, playerRound.hand);
+  if (activeBond) {
+    bonusScore += activeBond.bonus;
+    bonusReasons.push(`人物羁绊：${activeBond.name} +${activeBond.bonus}`);
     bonusSources.push("bond");
   }
 
@@ -746,6 +771,7 @@ function scorePlayer(state: GameState, playerId: string): ScoringBreakdown {
         : bonusReasons,
     bonusSources:
       cappedBonus < bonusScore ? [...bonusSources, "cap"] : bonusSources,
+    bondIds: activeBond ? [activeBond.id] : [],
   };
 }
 
@@ -767,24 +793,28 @@ function getAutomaticScoringValue(
     seat.roleId === "casino_backer" &&
     playerRound.casinoBackerDeclared &&
     card.tags.includes("gamble") &&
-    card.score >= 4 &&
+    getCardScoreValue(card) >= 4 &&
     playerRound.wageredCardId !== card.id
   ) {
     bonusScore += 1;
   }
 
-  bonusScore += getBondBonus(state, playerId, card.id, finalHand);
+  bonusScore += getActiveBond(state, playerId, card.id, finalHand)?.bonus ?? 0;
 
-  return card.score + Math.min(bonusScore, MAX_ROUND_BONUS);
+  return getCardScoreValue(card) + Math.min(bonusScore, MAX_ROUND_BONUS);
 }
 
-function getBondBonus(
+function getCardScoreValue(card: CharacterCard): number {
+  return card.score === "family_glory" ? 99 : card.score;
+}
+
+function getActiveBond(
   state: GameState,
   playerId: string,
   scoredCardId: string,
   finalHand: readonly string[],
-): number {
-  const activeBond = BOND_RULES.find((bond) => {
+): (typeof BOND_RULES)[number] | undefined {
+  return BOND_RULES.find((bond) => {
     if (!bond.characterIds.includes(scoredCardId)) {
       return false;
     }
@@ -793,12 +823,10 @@ function getBondBonus(
       return false;
     }
 
-    return bond.characterIds.every((cardId) =>
+    return bond.characterIds.some((cardId) =>
       evaluateCardConditionForPlayer(state, playerId, cardId).met,
     );
   });
-
-  return activeBond?.bonus ?? 0;
 }
 
 function getEffectiveMarkersForCard(
@@ -861,7 +889,7 @@ function getNextDeferredDiscardCount(
 function assertCanUseRoleAbility(state: GameState, playerId: string): void {
   const playerRound = getPlayerRound(state, playerId);
   if (playerRound.usedRoleAbility) {
-    throw new Error("本轮已经使用过玩家技能。");
+    throw new Error("本轮已经使用过观众技能。");
   }
 }
 
@@ -887,7 +915,7 @@ function ensureDeckHasCards(
 
   const refilledDeck = [...characterDeck, ...shuffle(discardPile, random)];
   if (refilledDeck.length < required) {
-    throw new Error("人物牌数量不足，无法发牌。");
+    throw new Error("角色拍立得数量不足，无法发牌。");
   }
 
   return {

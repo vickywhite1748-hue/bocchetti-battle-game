@@ -20,6 +20,7 @@ export type CharacterTag =
 export type Condition =
   | { type: "minCount"; marker: MarkerCategory; count: number }
   | { type: "maxCount"; marker: MarkerCategory; count: number }
+  | { type: "equalCount"; marker: MarkerCategory; otherMarker: MarkerCategory }
   | { type: "allOf"; conditions: Condition[] }
   | { type: "anyOf"; conditions: Condition[] }
   | { type: "lastIs"; marker: MarkerCategory };
@@ -29,7 +30,7 @@ export type CharacterCard = {
   name: string;
   versionTitle: string;
   sourceShow: ShowId;
-  score: number;
+  score: number | "family_glory";
   tier: "stable" | "story" | "fate";
   tags: CharacterTag[];
   condition: Condition;
@@ -72,6 +73,7 @@ export type PlayerSeat = {
   name: string;
   roleId: PlayerRoleId;
   score: number;
+  familyGlory: boolean;
 };
 
 export type PlayerRoundState = {
@@ -118,7 +120,7 @@ export type ConditionEvaluation = {
   reason: string;
 };
 
-export type BonusSource = "wager" | "casino_backer" | "bond" | "cap";
+export type BonusSource = "wager" | "casino_backer" | "bond" | "cap" | "family_glory";
 
 export type ScoringBreakdown = {
   playerId: string;
@@ -130,6 +132,7 @@ export type ScoringBreakdown = {
   reason: string;
   bonusReasons: string[];
   bonusSources: BonusSource[];
+  bondIds: string[];
 };
 
 export type RoundResult = {

@@ -52,6 +52,14 @@ function evaluate(
         reason: `${condition.marker} ${actual}<=${condition.count}`,
       };
     }
+    case "equalCount": {
+      const left = counts[condition.marker];
+      const right = counts[condition.otherMarker];
+      return {
+        met: left === right,
+        reason: `${condition.marker} ${left}=${condition.otherMarker} ${right}`,
+      };
+    }
     case "allOf": {
       const results = condition.conditions.map((child) =>
         evaluate(child, drawnMarkers, counts),

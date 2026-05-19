@@ -122,7 +122,7 @@ function runAiDiscardTurn(
   const hand = nextState.playerRounds[seat.id]?.hand ?? [];
   if (hand.length < required) {
     throw new Error(
-      `${seat.name} 手牌不足，无法弃 ${required} 张。round=${nextState.round}, phase=${nextState.phase}, hand=${hand.length}, deck=${nextState.characterDeck.length}, discard=${nextState.discardPile.length}`,
+      `${seat.name} 拍立得不足，无法弃置 ${required} 张。round=${nextState.round}, phase=${nextState.phase}, hand=${hand.length}, deck=${nextState.characterDeck.length}, discard=${nextState.discardPile.length}`,
     );
   }
 
@@ -306,7 +306,7 @@ function getExpectedHandSizeForPhase(phase: GameState["phase"]): number {
     case "discard_3":
       return 2;
     default:
-      throw new Error(`当前阶段不需要检查弃牌：${phase}`);
+      throw new Error(`当前阶段不需要检查弃置：${phase}`);
   }
 }
 
