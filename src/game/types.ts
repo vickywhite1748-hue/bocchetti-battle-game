@@ -61,7 +61,7 @@ export type BondRule = {
   characterIds: [string, string];
   conditionText: string;
   storyText: string;
-  bonus: 1 | 2;
+  bonus: 1;
   scoringMode: "addToScoredCharacter";
 };
 

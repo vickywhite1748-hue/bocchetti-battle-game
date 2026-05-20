@@ -28,7 +28,7 @@ export const BOND_RULES: BondRule[] = [
     conditionText: "两张拍立得留到结算，计分拍立得满足条件。",
     storyText:
       "Chichi 的不甘和 Sonnyboy 的体面身份彼此拉扯，家族继承权越清晰，兄弟之间的裂缝越深。",
-    bonus: 2,
+    bonus: 1,
     scoringMode: "addToScoredCharacter",
   },
   {

@@ -205,7 +205,7 @@ describe("core engine", () => {
     expect(score.bonusReasons).toContain("签署拍立得 +1");
   });
 
-  it("caps combined wager, role, and bond bonuses at the round bonus limit", () => {
+  it("combines wager and bond bonuses without a cap reason at the limit", () => {
     const base = createStateAtResolution(["family", "family", "gang", "stage"]);
     const playerId = base.seats[0]!.id;
     const casinoState: GameState = {
@@ -230,7 +230,9 @@ describe("core engine", () => {
     expect(score.baseScore).toBe(4);
     expect(score.bonusScore).toBe(2);
     expect(score.totalScore).toBe(6);
-    expect(score.bonusReasons).toContain("奖励上限 2");
+    expect(score.bonusReasons).toContain("签署拍立得 +1");
+    expect(score.bonusReasons).toContain("人物羁绊：兄弟的裂缝 +1");
+    expect(score.bonusReasons).not.toContain("奖励上限 2");
   });
 
   it("adds bond bonus when only the scoring bonded card succeeds", () => {

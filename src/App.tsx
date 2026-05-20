@@ -33,13 +33,39 @@ import type {
 } from "./game";
 
 const HUMAN_PLAYER_ID = "player-1";
-const APP_VERSION = "v1.3.0";
+const APP_VERSION = "v1.4.0";
 const UPDATE_STORAGE_KEY = "bocchetti-battle-dismissed-version";
-const UPDATE_LOG_ITEMS = [
-  "新增页面内“反馈”入口，启动页和对局页都可以打开。",
-  "打开反馈时会自动复制版本、页面、阶段、轮数、角色、比分和积点等信息。",
-  "反馈浮窗提供手动复制和显示自动信息的兜底操作。",
-  "当前反馈表单使用腾讯问卷内嵌提交，并保留新窗口打开兜底。",
+const UPDATE_LOGS = [
+  {
+    version: "v1.4.0",
+    items: [
+      "新增阶段提示，当前该做什么会直接显示在对局页顶部。",
+      "优化规则弹窗，把首局只需要知道的内容放到基本规则。",
+      "补充积点、签署、羁绊、家族荣光和观众技能的解释。",
+      "按钮不可操作时显示更明确的原因提示。",
+      "所有羁绊奖励统一为 +1，羁绊成就显示未解锁 / 已解锁状态。",
+    ],
+  },
+  {
+    version: "v1.3.0",
+    items: [
+      "新增页面内“反馈”入口，启动页和对局页都可以打开。",
+      "打开反馈时会自动复制版本、页面、阶段、轮数、角色、比分和积点等信息。",
+      "反馈浮窗提供手动复制和显示自动信息的兜底操作。",
+      "当前反馈表单使用腾讯问卷内嵌提交，并保留新窗口打开兜底。",
+    ],
+  },
+  {
+    version: "v1.2.0",
+    items: [
+      "Michele & Paulo 拆为 Mighele《草帽小红》和 Paulo《草帽小绿》。",
+      "新增羁绊“赌场主理人”和“父母爱情”。",
+      "新增“家族荣光”胜利牌。",
+      "新增“羁绊成就”，未解锁剧情显示为？？？。",
+      "新增 A = B 型拍立得条件。",
+      "新增页面内“更新记录”入口，同版本关闭后不再自动提示。",
+    ],
+  },
 ];
 const FEEDBACK_FORM_URL =
   "https://wj.qq.com/s2/26742671/39fc/";
@@ -84,6 +110,9 @@ export function App() {
   const [feedbackContext, setFeedbackContext] = useState("");
   const [feedbackFrameSrc, setFeedbackFrameSrc] = useState("");
   const [feedbackContextVisible, setFeedbackContextVisible] = useState(false);
+  const [updateLogMode, setUpdateLogMode] = useState<"latest" | "recent">(
+    "latest",
+  );
   const [updateLogOpen, setUpdateLogOpen] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -101,6 +130,11 @@ export function App() {
   const latestResult = game?.roundResults.at(-1) ?? null;
   const ghostwriterPending = Boolean(humanRound?.ghostwriterDiscardPending);
   const unlockedBondIds = useMemo(() => getUnlockedBondIds(game), [game]);
+  const roleButtonHint = game ? getRoleButtonHint(game, selectedCards.length) : null;
+  const discardButtonHint = game
+    ? getDiscardButtonHint(game, selectedCards.length, requiredDiscards)
+    : null;
+  const stageGuide = game ? getStageGuide(game, selectedCards.length, requiredDiscards) : null;
 
   useEffect(() => {
     if (!message) {
@@ -159,6 +193,7 @@ export function App() {
   }
 
   function openUpdateLog() {
+    setUpdateLogMode("recent");
     setUpdateLogOpen(true);
   }
 
@@ -314,7 +349,7 @@ export function App() {
       return;
     }
 
-    safely(() => {
+    try {
       let next = game;
       const scoringCardId = selectedScoringCard ?? successfulCards[0]?.id;
       if (scoringCardId) {
@@ -324,11 +359,16 @@ export function App() {
       next = runAiForCurrentDecision(next);
       const resolved = resolveRound(next);
       const unlockedNames = getNewUnlockedBondNames(previousUnlockedBondIds, resolved);
+      setGame(resolved);
+      setSelectedCards([]);
+      setSelectedScoringCard(null);
+      setMessage(null);
       if (unlockedNames.length > 0) {
         setAchievementMessage(`解锁羁绊成就：${unlockedNames.join("、")}`);
       }
-      return resolved;
-    });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
   }
 
   function beginNextRound() {
@@ -427,7 +467,9 @@ export function App() {
             unlockedBondIds={unlockedBondIds}
           />
         )}
-        {updateLogOpen && <UpdateLogPopover onClose={closeUpdateLog} />}
+        {updateLogOpen && (
+          <UpdateLogPopover mode={updateLogMode} onClose={closeUpdateLog} />
+        )}
         {feedbackOpen && (
           <FeedbackModal
             context={feedbackContext}
@@ -484,6 +526,16 @@ export function App() {
         </div>
       </header>
 
+      {stageGuide && (
+        <section className="stage-guide" aria-live="polite">
+          <div>
+            <span>当前建议</span>
+            <strong>{stageGuide.title}</strong>
+          </div>
+          <p>{stageGuide.body}</p>
+        </section>
+      )}
+
       {message && (
         <div className="message-toast" role="status">
           {message}
@@ -496,7 +548,9 @@ export function App() {
         </div>
       )}
 
-      {updateLogOpen && <UpdateLogPopover onClose={closeUpdateLog} />}
+      {updateLogOpen && (
+        <UpdateLogPopover mode={updateLogMode} onClose={closeUpdateLog} />
+      )}
       {feedbackOpen && (
         <FeedbackModal
           context={feedbackContext}
@@ -621,6 +675,7 @@ export function App() {
               {canUseRoleButton(game) && (
                 <button
                   className="secondary-action"
+                  title={roleButtonHint ?? undefined}
                   disabled={
                     ghostwriterPending ||
                     (humanSeat?.roleId === "stage_manager" &&
@@ -645,6 +700,7 @@ export function App() {
               {isDiscardPhase(game.phase) && (
                 <button
                   className="primary-action"
+                  title={discardButtonHint ?? undefined}
                   disabled={
                     selectedCards.length !== (ghostwriterPending ? 1 : requiredDiscards)
                   }
@@ -654,6 +710,11 @@ export function App() {
                 </button>
               )}
             </div>
+            {(roleButtonHint || discardButtonHint) && (
+              <small className="action-hint">
+                {discardButtonHint ?? roleButtonHint}
+              </small>
+            )}
           </div>
 
           <div className="card-grid">
@@ -772,17 +833,29 @@ function SelectedRoleIntro(props: { roleId: PlayerRoleId }) {
   );
 }
 
-function UpdateLogPopover(props: { onClose: () => void }) {
+function UpdateLogPopover(props: {
+  mode: "latest" | "recent";
+  onClose: () => void;
+}) {
+  const logs = props.mode === "latest" ? UPDATE_LOGS.slice(0, 1) : UPDATE_LOGS.slice(0, 3);
+
   return (
     <aside className="update-log-popover" role="status">
       <div>
-        <span>{APP_VERSION}</span>
+        <span>{props.mode === "latest" ? APP_VERSION : "最近三个版本"}</span>
         <button onClick={props.onClose}>关闭</button>
       </div>
-      <h2>更新记录</h2>
-      <ul>
-        {UPDATE_LOG_ITEMS.map((item) => (
-          <li key={item}>{item}</li>
+      <h2>{props.mode === "latest" ? "最新更新" : "更新记录"}</h2>
+      <ul className="update-log-list">
+        {logs.map((log) => (
+          <li className="update-log-version" key={log.version}>
+            <h3>{log.version}</h3>
+            <ul className="update-log-items">
+              {log.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </li>
         ))}
       </ul>
     </aside>
@@ -865,31 +938,54 @@ function BasicRules() {
   return (
     <div className="info-grid">
       <article>
-        <h3>每轮流程</h3>
+        <h3>首局只看这里</h3>
         <p>
-          每名观众抽 5 张角色拍立得。积点按 4、3、2、1
-          分四幕抽出，每次抽完后观众弃置，最终保留 2 张拍立得进入结算。
+          你的目标是保留最可能成功的 2 张角色拍立得。每张拍立得都会写明它需要哪些积点；条件满足后，结算时可以选 1 张得分。
         </p>
         <p>
-          结算时每名观众最多选择 1 张满足条件的拍立得得分；若没有满足条件的拍立得，本轮不得分。
-        </p>
-      </article>
-      <article>
-        <h3>签署和奖励</h3>
-        <p>
-          第二次弃置阶段可以签署 1 张当前持有的角色拍立得。若该拍立得最终成功计分，额外 +1。
-        </p>
-        <p>
-          人物羁绊、签署拍立得和角色技能奖励共享每轮奖励上限，单轮额外分最高为 2。
+          不确定时，优先保留已经接近条件、分数较高、或能和另一张形成羁绊的拍立得。
         </p>
       </article>
       <article>
-        <h3>积点池</h3>
+        <h3>一轮怎么走</h3>
         <p>
-          V1 当前积点池共 18 枚，每轮抽 10 枚。积点越早被抽出，后续继续追同类积点的风险越高。
+          每轮先拿 5 张拍立得。积点分四幕抽出：4 枚、3 枚、2 枚、1 枚。前三次抽完都要弃置，最后只留下 2 张。
         </p>
         <p>
-          每轮会重新洗一整袋积点；主界面只显示已抽出的积点和每类已抽数量。
+          到本轮结算时，每名观众最多选择 1 张满足条件的拍立得得分；没有满足条件就不得分。
+        </p>
+      </article>
+      <article>
+        <h3>积点怎么看</h3>
+        <p>
+          积点池共 18 枚，每轮抽 10 枚。每类积点总数都是 3 枚，界面上的 `家族 1/3` 表示本轮已经抽出 1 枚家族。
+        </p>
+        <p>
+          每轮会重新洗一整袋积点。某类积点已经出现很多时，再指望它继续出现就更冒险。
+        </p>
+      </article>
+      <article>
+        <h3>拍立得条件</h3>
+        <p>
+          `&gt;=` 是至少，`&lt;=` 是最多，`&` 是同时满足，`/` 是满足其中一种，`最后 =` 只看终幕最后一枚积点。
+        </p>
+        <p>
+          `家族 = 爱情` 代表两类积点数量相等，并且相关积点至少出现 1 枚。
+        </p>
+      </article>
+      <article>
+        <h3>签署拍立得</h3>
+        <p>
+          第二次弃置阶段可以签署 1 张当前持有的拍立得。若它最后被你选为计分拍立得并成功，额外 +1。
+        </p>
+        <p>
+          签署可以取消；如果签署的拍立得后来被弃置，本轮签署就不会加分。
+        </p>
+      </article>
+      <article>
+        <h3>奖励上限</h3>
+        <p>
+          签署、人物羁绊和部分角色技能都属于额外奖励。每轮额外分最高 +2，避免单轮分数爆炸。
         </p>
       </article>
     </div>
@@ -957,10 +1053,31 @@ function SpecialRules() {
       <article>
         <h3>人物羁绊</h3>
         <p>
-          羁绊要求两张相关角色拍立得同时留到结算；只要计分拍立得满足条件，即可获得该组羁绊分。
+          羁绊要求两张相关角色拍立得同时留到结算。只要你选择计分的那张拍立得满足条件，就能获得对应羁绊分。
         </p>
         <p>
-          成功触发过的羁绊会解锁为羁绊成就；未解锁前，成就页只显示组合和奖励，剧情解说保持隐藏。
+          所有羁绊奖励统一为 +1，并计入每轮额外奖励上限。
+        </p>
+        <p>
+          手牌中已经凑齐羁绊组合时，卡面会提前提示“羁绊”。这只是提醒组合存在，不代表一定能加分。
+        </p>
+      </article>
+      <article>
+        <h3>羁绊成就</h3>
+        <p>
+          成功触发过的羁绊会解锁为羁绊成就。未解锁前，成就页只显示组合，剧情解说保持隐藏。
+        </p>
+        <p>
+          羁绊成就是剧情收集目标，不会改变之后的牌堆或积点池。
+        </p>
+      </article>
+      <article>
+        <h3>家族荣光</h3>
+        <p>
+          少数拍立得不是普通分数，而是“家族荣光”。它们条件更难；一旦达成并被选为本轮计分拍立得，会直接赢得整局。
+        </p>
+        <p>
+          家族荣光拍立得不参与人物羁绊，也不受普通额外分上限影响。
         </p>
       </article>
     </div>
@@ -982,7 +1099,7 @@ function BondAchievements(props: { unlockedBondIds: Set<string> }) {
           >
             <div>
               <strong>{bond.name}</strong>
-              <span>{unlocked ? "已解锁" : `+${bond.bonus}`}</span>
+              <span>{unlocked ? "已解锁" : "未解锁"}</span>
             </div>
             <p>
               {left.name}《{left.versionTitle}》 + {right.name}《
@@ -1005,6 +1122,7 @@ function SkillRules() {
           <p>{role.timing}</p>
           <p>{role.abilityText}</p>
           <small>{role.strategyText}</small>
+          <small>{getRoleUseHint(role.id)}</small>
         </article>
       ))}
     </div>
@@ -1198,6 +1316,147 @@ function canUseRoleButton(game: GameState): boolean {
   }
 
   return isDiscardPhase(game.phase);
+}
+
+function getStageGuide(
+  game: GameState,
+  selectedCount: number,
+  requiredDiscards: number,
+): { title: string; body: string } {
+  const round = game.playerRounds[HUMAN_PLAYER_ID];
+  const successfulCards = round
+    ? getSuccessfulScoringCards(game, round.hand)
+    : [];
+
+  switch (game.phase) {
+    case "setup":
+      return {
+        title: game.roundResults.length === 0 ? "准备开始第一轮" : "上一轮已结束",
+        body:
+          "确认人数和观众角色后，点击“开始下一轮”。每轮都会重新发拍立得并洗一整袋积点。",
+      };
+    case "draw_1":
+    case "draw_2":
+    case "draw_3":
+    case "draw_4":
+      return {
+        title: "先抽积点",
+        body:
+          "点击“抽取积点”推进这一幕。抽完后再根据新出现的积点决定要留下哪几张拍立得。",
+      };
+    case "discard_1":
+      if (round?.ghostwriterDiscardPending) {
+        return {
+          title: "先完成代笔弃置",
+          body: "代笔人已经多抽 1 张。现在请选择 1 张拍立得作为技能弃置，再继续正常弃置。",
+        };
+      }
+      return {
+        title: "第一次取舍",
+        body: `选择 ${requiredDiscards} 张最不想保留的拍立得，再点击“确认弃置”。已选 ${selectedCount}/${requiredDiscards}。`,
+      };
+    case "discard_2":
+      if (round?.ghostwriterDiscardPending) {
+        return {
+          title: "先完成代笔弃置",
+          body: "代笔人的技能弃置不算作本阶段正常弃置。先处理技能成本，再继续本阶段取舍。",
+        };
+      }
+      return {
+        title: "可以签署，也要继续取舍",
+        body:
+          `你可以先选择 1 张拍立得签署；如果它最后成功计分会额外 +1。随后选择 ${requiredDiscards} 张弃置，当前已选 ${selectedCount}/${requiredDiscards}。`,
+      };
+    case "discard_3":
+      return {
+        title: "最后一次取舍",
+        body:
+          `这一阶段后会留下 2 张拍立得进入结算。选择 ${requiredDiscards} 张弃置，当前已选 ${selectedCount}/${requiredDiscards}。`,
+      };
+    case "resolution":
+      if (successfulCards.length > 1) {
+        return {
+          title: "选择本轮计分拍立得",
+          body: "你有多张拍立得满足条件。请选择最想计分的 1 张，再点击“结算本轮”。",
+        };
+      }
+      if (successfulCards.length === 1) {
+        return {
+          title: "可以结算",
+          body: "你有 1 张拍立得满足条件。点击“结算本轮”后会计算基础分、签署和羁绊奖励。",
+        };
+      }
+      return {
+        title: "本轮没有成功拍立得",
+        body: "没有拍立得满足条件也可以结算，本轮记为 0 分，然后进入下一轮。",
+      };
+    case "game_over":
+      return {
+        title: "整局结束",
+        body: "最终结算会按总分排序；如果有人达成家族荣光，会直接成为胜者。",
+      };
+    default:
+      return {
+        title: "继续对局",
+        body: "按照当前阶段按钮推进即可。",
+      };
+  }
+}
+
+function getRoleButtonHint(game: GameState, selectedCount: number): string | null {
+  const seat = game.seats.find((item) => item.id === HUMAN_PLAYER_ID);
+  const round = game.playerRounds[HUMAN_PLAYER_ID];
+
+  if (!seat || !round || !canUseRoleButton(game)) {
+    return null;
+  }
+
+  if (round.ghostwriterDiscardPending) {
+    return "先完成代笔人的技能弃置。";
+  }
+
+  if (seat.roleId === "stage_manager" && selectedCount !== 1) {
+    return "舞台监督需要先选择 1 张拍立得作为排演对象。";
+  }
+
+  return null;
+}
+
+function getDiscardButtonHint(
+  game: GameState,
+  selectedCount: number,
+  requiredDiscards: number,
+): string | null {
+  const round = game.playerRounds[HUMAN_PLAYER_ID];
+
+  if (!isDiscardPhase(game.phase) || !round) {
+    return null;
+  }
+
+  if (round.ghostwriterDiscardPending && selectedCount !== 1) {
+    return "请选择 1 张拍立得作为代笔人的技能弃置。";
+  }
+
+  if (!round.ghostwriterDiscardPending && selectedCount !== requiredDiscards) {
+    return `本阶段需要选择 ${requiredDiscards} 张弃置，当前已选 ${selectedCount} 张。`;
+  }
+
+  return null;
+}
+
+function getRoleUseHint(roleId: PlayerRoleId): string {
+  switch (roleId) {
+    case "ghostwriter":
+      return "按钮只会在第一次或第二次弃置阶段出现；使用后必须先弃 1 张技能成本。";
+    case "stage_manager":
+      return "按钮只会在第一次弃置阶段出现；需要先点选 1 张拍立得。";
+    case "casino_backer":
+      return "按钮只会在第二次弃置阶段出现；适合你已经决定赌这一轮时使用。";
+    case "bartender":
+      return "按钮只会在第一次或第二次弃置阶段出现；本次少弃，下一次要补弃。";
+    default:
+      return "";
+  }
 }
 
 function canAdvanceAfterDiscards(game: GameState): boolean {

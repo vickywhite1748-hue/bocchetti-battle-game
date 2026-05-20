@@ -75,7 +75,7 @@ describe("V1 data model", () => {
     for (const bond of BOND_RULES) {
       expect(characterIds.has(bond.characterIds[0])).toBe(true);
       expect(characterIds.has(bond.characterIds[1])).toBe(true);
-      expect(bond.bonus).toBeLessThanOrEqual(MAX_ROUND_BONUS);
+      expect(bond.bonus).toBe(1);
       expect(bond.characterIds).not.toContain("sonny-family-price");
       expect(bond.characterIds).not.toContain("chichi-returned-truth");
     }
