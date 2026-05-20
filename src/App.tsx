@@ -33,19 +33,16 @@ import type {
 } from "./game";
 
 const HUMAN_PLAYER_ID = "player-1";
-const APP_VERSION = "v1.2.0";
+const APP_VERSION = "v1.3.0";
 const UPDATE_STORAGE_KEY = "bocchetti-battle-dismissed-version";
 const UPDATE_LOG_ITEMS = [
-  "Michele & Paulo 拆为 Mighele《草帽小红》和 Paulo《草帽小绿》。",
-  "新增羁绊“赌场主理人”和“父母爱情”。",
-  "新增“家族荣光”胜利牌。",
-  "新增“羁绊成就”，未解锁剧情显示为？？？。",
-  "达成羁绊时显示 2 秒解锁提示。",
-  "特殊规则页只保留羁绊玩法说明。",
-  "新增 A = B 型拍立得条件。",
-  "调整多张拍立得条件与分值，Gambino《赌场陷阱》改为 5 分命运牌。",
-  "新增页面内“更新记录”入口，同版本关闭后不再自动提示。",
+  "新增页面内“反馈”入口，启动页和对局页都可以打开。",
+  "打开反馈时会自动复制版本、页面、阶段、轮数、角色、比分和积点等信息。",
+  "反馈浮窗提供手动复制和显示自动信息的兜底操作。",
+  "当前反馈表单使用腾讯问卷内嵌提交，并保留新窗口打开兜底。",
 ];
+const FEEDBACK_FORM_URL =
+  "https://wj.qq.com/s2/26742671/39fc/";
 
 const markerLabels: Record<MarkerCategory, string> = {
   family: "家族",
@@ -83,6 +80,10 @@ export function App() {
   const [achievementMessage, setAchievementMessage] = useState<string | null>(
     null,
   );
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackContext, setFeedbackContext] = useState("");
+  const [feedbackFrameSrc, setFeedbackFrameSrc] = useState("");
+  const [feedbackContextVisible, setFeedbackContextVisible] = useState(false);
   const [updateLogOpen, setUpdateLogOpen] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -166,6 +167,38 @@ export function App() {
       window.localStorage.setItem(UPDATE_STORAGE_KEY, APP_VERSION);
     }
     setUpdateLogOpen(false);
+  }
+
+  async function copyFeedbackContext(context: string) {
+    try {
+      await navigator.clipboard.writeText(context);
+      setMessage("已复制自动信息，请在反馈页粘贴到正文里。");
+      setFeedbackContextVisible(false);
+    } catch {
+      setFeedbackContextVisible(true);
+      setMessage("浏览器阻止了自动复制，请手动复制自动信息。");
+    }
+  }
+
+  function openFeedback() {
+    const context = buildFeedbackContext({
+      game,
+      playerCount,
+      roleId,
+    });
+
+    setFeedbackContext(context);
+    setFeedbackFrameSrc(buildFeedbackFrameUrl());
+    setFeedbackContextVisible(false);
+    setFeedbackOpen(true);
+    void copyFeedbackContext(context);
+  }
+
+  function closeFeedback() {
+    setFeedbackOpen(false);
+    setFeedbackContext("");
+    setFeedbackFrameSrc("");
+    setFeedbackContextVisible(false);
   }
 
   function drawStep() {
@@ -340,6 +373,9 @@ export function App() {
               <button className="text-action" onClick={openUpdateLog}>
                 更新记录
               </button>
+              <button className="text-action" onClick={openFeedback}>
+                反馈
+              </button>
             </div>
           </div>
 
@@ -392,6 +428,23 @@ export function App() {
           />
         )}
         {updateLogOpen && <UpdateLogPopover onClose={closeUpdateLog} />}
+        {feedbackOpen && (
+          <FeedbackModal
+            context={feedbackContext}
+            contextVisible={feedbackContextVisible}
+            frameSrc={feedbackFrameSrc}
+            onClose={closeFeedback}
+            onCopy={() => void copyFeedbackContext(feedbackContext)}
+            onToggleContext={() =>
+              setFeedbackContextVisible((current) => !current)
+            }
+          />
+        )}
+        {message && (
+          <div className="message-toast" role="status">
+            {message}
+          </div>
+        )}
       </main>
     );
   }
@@ -406,6 +459,9 @@ export function App() {
             <span className="version-pill">{APP_VERSION}</span>
             <button className="text-action" onClick={openUpdateLog}>
               更新记录
+            </button>
+            <button className="text-action" onClick={openFeedback}>
+              反馈
             </button>
           </div>
         </div>
@@ -441,6 +497,16 @@ export function App() {
       )}
 
       {updateLogOpen && <UpdateLogPopover onClose={closeUpdateLog} />}
+      {feedbackOpen && (
+        <FeedbackModal
+          context={feedbackContext}
+          contextVisible={feedbackContextVisible}
+          frameSrc={feedbackFrameSrc}
+          onClose={closeFeedback}
+          onCopy={() => void copyFeedbackContext(feedbackContext)}
+          onToggleContext={() => setFeedbackContextVisible((current) => !current)}
+        />
+      )}
 
       <section className="score-row">
         {game.seats.map((seat) => (
@@ -723,6 +789,78 @@ function UpdateLogPopover(props: { onClose: () => void }) {
   );
 }
 
+function FeedbackModal(props: {
+  context: string;
+  contextVisible: boolean;
+  frameSrc: string;
+  onClose: () => void;
+  onCopy: () => void;
+  onToggleContext: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <section className="rules-modal feedback-modal">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">观众反馈</p>
+            <h2>反馈这局体验</h2>
+          </div>
+          <button onClick={props.onClose}>关闭</button>
+        </div>
+
+        <div className="feedback-layout">
+          <article className="feedback-card">
+            <h3>提交反馈</h3>
+            <p>
+              打开反馈时，系统会先复制一段自动信息。提交问卷时请把它粘贴到对应输入框里，再补充你遇到的问题或感受。
+            </p>
+            <div className="feedback-actions">
+              <a
+                className="button-link primary-action"
+                href={FEEDBACK_FORM_URL}
+                rel="noreferrer"
+                target="_blank"
+              >
+                新窗口打开问卷
+              </a>
+              <button onClick={props.onCopy}>复制自动信息</button>
+              <button onClick={props.onToggleContext}>
+                {props.contextVisible ? "隐藏自动信息" : "显示自动信息"}
+              </button>
+            </div>
+          </article>
+
+          <article className="feedback-card">
+            <h3>建议写清楚</h3>
+            <ul>
+              <li>你当时想做什么，实际发生了什么。</li>
+              <li>哪张拍立得、哪个技能或哪条羁绊让你困惑。</li>
+              <li>节奏是太快、太慢，还是某个选择没有价值。</li>
+            </ul>
+          </article>
+        </div>
+
+        {props.frameSrc && (
+          <div className="feedback-frame-shell">
+            <iframe
+              allowFullScreen
+              sandbox="allow-same-origin allow-scripts allow-modals allow-downloads allow-forms allow-popups"
+              src={props.frameSrc}
+              title="观众反馈问卷"
+            />
+          </div>
+        )}
+
+        <textarea
+          className={props.contextVisible ? "feedback-context" : "feedback-context hidden"}
+          readOnly
+          value={props.context}
+        />
+      </section>
+    </div>
+  );
+}
+
 function BasicRules() {
   return (
     <div className="info-grid">
@@ -756,6 +894,61 @@ function BasicRules() {
       </article>
     </div>
   );
+}
+
+function buildFeedbackContext(input: {
+  game: GameState | null;
+  playerCount: 2 | 3 | 4;
+  roleId: PlayerRoleId;
+}) {
+  const pageUrl = typeof window === "undefined" ? "unknown" : window.location.href;
+  const channel =
+    typeof window !== "undefined" && window.location.hostname === "localhost"
+      ? "local-dev"
+      : "public";
+  const timestamp = new Date().toLocaleString(undefined, {
+    hour12: false,
+    timeZoneName: "short",
+  });
+  const game = input.game;
+  const humanSeat =
+    game?.seats.find((seat) => seat.id === HUMAN_PLAYER_ID) ?? null;
+  const humanRound = game?.playerRounds[HUMAN_PLAYER_ID] ?? null;
+  const scoreSummary =
+    game?.seats
+      .map((seat) => `${seat.name}:${seat.familyGlory ? "家族荣光" : seat.score}`)
+      .join(" / ") ?? "未开局";
+  const markerSummary =
+    game?.drawnMarkers.map((marker) => markerLabels[marker]).join("、") || "无";
+  const handSummary =
+    humanRound?.hand
+      .map((cardId) => {
+        const card = getCardById(cardId);
+        return `${card.name}《${card.versionTitle}》`;
+      })
+      .join(" / ") || "无";
+
+  return [
+    `版本: ${APP_VERSION}`,
+    `渠道: ${channel}`,
+    `时间: ${timestamp}`,
+    `页面: ${pageUrl}`,
+    `画面: ${game ? phaseLabels[game.phase] : "启动页"}`,
+    `人数: ${game?.seats.length ?? input.playerCount}`,
+    `观众角色: ${getRoleName(humanSeat?.roleId ?? input.roleId)}`,
+    `轮数: ${game?.round ?? "未开局"}`,
+    `目标分: ${game?.victoryScore ?? "未开局"}`,
+    `比分: ${scoreSummary}`,
+    `本轮积点: ${markerSummary}`,
+    `你的拍立得: ${handSummary}`,
+    `最近日志: ${game?.log.slice(-3).join(" / ") || "无"}`,
+  ].join("\n");
+}
+
+function buildFeedbackFrameUrl() {
+  const url = new URL(FEEDBACK_FORM_URL);
+  url.searchParams.set("_t", String(Date.now()));
+  return url.toString();
 }
 
 function SpecialRules() {
