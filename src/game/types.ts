@@ -139,3 +139,49 @@ export type RoundResult = {
   round: number;
   scores: ScoringBreakdown[];
 };
+
+export type CompetitionPhase = "register" | "round_result" | "game_over";
+
+export type CompetitionRegistration = {
+  cardId: string;
+  turn: number;
+};
+
+export type CompetitionPlayerResult = {
+  playerId: string;
+  cardId: string | null;
+  registrationTurn: number | null;
+  success: boolean;
+  baseScore: number;
+  bonusScore: number;
+  totalScore: number;
+  reason: string;
+  bondIds: string[];
+};
+
+export type CompetitionRoundResult = {
+  round: number;
+  market: string[];
+  priorityOrder: string[];
+  playerResults: CompetitionPlayerResult[];
+};
+
+export type CompetitionGameState = {
+  seats: PlayerSeat[];
+  targetScore: number;
+  round: number;
+  turn: number;
+  phase: CompetitionPhase;
+  markerBags: Record<string, MarkerCategory[]>;
+  playerMarkers: Record<string, MarkerCategory[]>;
+  market: string[];
+  characterDeck: string[];
+  discardPile: string[];
+  registrations: Record<string, CompetitionRegistration | null>;
+  turnActions: Record<string, boolean>;
+  archives: Record<string, string[]>;
+  unlockedBondIds: Record<string, string[]>;
+  roundResults: CompetitionRoundResult[];
+  priorityOrder: string[];
+  log: string[];
+};

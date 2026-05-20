@@ -3,20 +3,29 @@ import {
   BOND_RULES,
   MARKER_CONFIGS,
   PLAYER_ROLES,
+  advanceCompetitionAfterActions,
   advanceAfterDiscards,
   cancelWager,
+  createCompetitionGame,
   createGame,
   discardCards,
   discardGhostwriterCard,
   drawCurrentStep,
+  evaluateCompetitionCardCondition,
   evaluateCardConditionForPlayer,
   getCardById,
+  getCompetitionCardScore,
+  getCompetitionWinners,
   getRequiredDiscardCountForPlayer,
   getWinners,
+  passCompetitionTurn,
   placeWager,
+  registerCompetitionCard,
   resolveRound,
+  runCompetitionAiForTurn,
   runAiForCurrentDecision,
   selectScoringCard,
+  startCompetitionRound,
   startRound,
   useBartenderAbility,
   useCasinoBackerAbility,
@@ -25,6 +34,7 @@ import {
 } from "./game";
 import type {
   CharacterCard,
+  CompetitionGameState,
   Condition,
   GameState,
   MarkerCategory,
@@ -33,9 +43,18 @@ import type {
 } from "./game";
 
 const HUMAN_PLAYER_ID = "player-1";
-const APP_VERSION = "v1.4.0";
+const APP_VERSION = "v1.5.0";
 const UPDATE_STORAGE_KEY = "bocchetti-battle-dismissed-version";
 const UPDATE_LOGS = [
+  {
+    version: "v1.5.0",
+    items: [
+      "新增游戏主页，和平模式和竞争模式分开进入。",
+      "和平模式保留原有公共积点、弃置、签署、羁绊和目标分玩法。",
+      "新增竞争模式单机原型：公共拍立得市场、秘密登记、4 回合小局和目标分。",
+      "竞争模式采用跨小局羁绊，羁绊成就与和平模式独立计算。",
+    ],
+  },
   {
     version: "v1.4.0",
     items: [
@@ -93,9 +112,18 @@ const phaseLabels: Record<RoundPhase, string> = {
 };
 
 export function App() {
+  const [mode, setMode] = useState<"home" | "peace" | "competition">("home");
   const [playerCount, setPlayerCount] = useState<2 | 3 | 4>(4);
   const [roleId, setRoleId] = useState<PlayerRoleId>("ghostwriter");
   const [game, setGame] = useState<GameState | null>(null);
+  const [competitionPlayerCount, setCompetitionPlayerCount] = useState<2 | 3 | 4>(4);
+  const [competitionTargetScore, setCompetitionTargetScore] = useState(15);
+  const [competitionGame, setCompetitionGame] = useState<CompetitionGameState | null>(
+    null,
+  );
+  const [selectedCompetitionCard, setSelectedCompetitionCard] = useState<string | null>(
+    null,
+  );
   const [rulesOpen, setRulesOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
@@ -123,6 +151,10 @@ export function App() {
 
   const humanRound = game?.playerRounds[HUMAN_PLAYER_ID];
   const humanSeat = game?.seats.find((seat) => seat.id === HUMAN_PLAYER_ID);
+  const competitionHumanRegistration =
+    competitionGame?.registrations[HUMAN_PLAYER_ID] ?? null;
+  const competitionHumanAction =
+    competitionGame?.turnActions[HUMAN_PLAYER_ID] ?? false;
   const requiredDiscards =
     game && isDiscardPhase(game.phase)
       ? getRequiredDiscardCountForPlayer(game, HUMAN_PLAYER_ID)
@@ -160,6 +192,29 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [achievementMessage]);
 
+  useEffect(() => {
+    if (!competitionGame || competitionGame.phase !== "register") {
+      return;
+    }
+
+    const humanHasRegistered = Boolean(competitionGame.registrations[HUMAN_PLAYER_ID]);
+    if (!humanHasRegistered) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      try {
+        const next = runCompetitionAiForTurn(competitionGame);
+        setCompetitionGame(next);
+        setMessage(null);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : String(error));
+      }
+    }, 700);
+
+    return () => window.clearTimeout(timer);
+  }, [competitionGame]);
+
   const markerCounts = useMemo(() => {
     const counts = Object.fromEntries(
       MARKER_CONFIGS.map((marker) => [marker.id, 0]),
@@ -192,6 +247,17 @@ export function App() {
     safely(() => createGame({ playerCount, humanRoleId: roleId }));
   }
 
+  function returnHome() {
+    setMode("home");
+    setGame(null);
+    setCompetitionGame(null);
+    setSelectedCards([]);
+    setSelectedScoringCard(null);
+    setSelectedCompetitionCard(null);
+    setRulesOpen(false);
+    setLogOpen(false);
+  }
+
   function openUpdateLog() {
     setUpdateLogMode("recent");
     setUpdateLogOpen(true);
@@ -217,7 +283,9 @@ export function App() {
 
   function openFeedback() {
     const context = buildFeedbackContext({
+      competitionGame,
       game,
+      mode,
       playerCount,
       roleId,
     });
@@ -379,6 +447,80 @@ export function App() {
     safely(() => startRound(game));
   }
 
+  function startCompetitionGame() {
+    setCompetitionGame(
+      createCompetitionGame({
+        playerCount: competitionPlayerCount,
+        targetScore: competitionTargetScore,
+      }),
+    );
+    setSelectedCompetitionCard(null);
+    setMessage(null);
+  }
+
+  function submitCompetitionRegistration() {
+    if (!competitionGame || !selectedCompetitionCard) {
+      return;
+    }
+
+    try {
+      const registered = registerCompetitionCard(
+        competitionGame,
+        HUMAN_PLAYER_ID,
+        selectedCompetitionCard,
+      );
+      setCompetitionGame(runCompetitionAiForTurn(registered));
+      setSelectedCompetitionCard(null);
+      setMessage(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function passCompetitionRegistration() {
+    if (!competitionGame) {
+      return;
+    }
+
+    try {
+      const passed = passCompetitionTurn(competitionGame, HUMAN_PLAYER_ID);
+      setCompetitionGame(runCompetitionAiForTurn(passed));
+      setSelectedCompetitionCard(null);
+      setMessage(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function beginNextCompetitionRound() {
+    if (!competitionGame) {
+      return;
+    }
+
+    try {
+      setCompetitionGame(startCompetitionRound(competitionGame));
+      setSelectedCompetitionCard(null);
+      setMessage(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function advanceCompetitionTurn() {
+    if (!competitionGame) {
+      return;
+    }
+
+    try {
+      const next = advanceCompetitionAfterActions(runCompetitionAiForTurn(competitionGame));
+      setCompetitionGame(next);
+      setSelectedCompetitionCard(null);
+      setMessage(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   function toggleSelectedCard(cardId: string) {
     if (!game || !isDiscardPhase(game.phase)) {
       return;
@@ -397,6 +539,118 @@ export function App() {
 
       return [...current, cardId];
     });
+  }
+
+  if (mode === "home") {
+    return (
+      <main className="app-shell">
+        <section className="setup-panel">
+          <div>
+            <div className="game-title-row">
+              <h1>战斗吧！Bocchetti！</h1>
+              <span>FROM @真理追赶交替</span>
+            </div>
+            <div className="version-row">
+              <span className="version-pill">{APP_VERSION}</span>
+              <button className="text-action" onClick={openUpdateLog}>
+                更新记录
+              </button>
+              <button className="text-action" onClick={openFeedback}>
+                反馈
+              </button>
+            </div>
+          </div>
+
+          <div className="mode-grid">
+            <article className="mode-card">
+              <div>
+                <p className="eyebrow">和平模式</p>
+                <h2>公共积点与拍立得取舍</h2>
+              </div>
+              <p>
+                所有观众面对同一组积点，通过弃置、签署、观众技能和一轮内羁绊争取得分。
+              </p>
+              <button className="primary-action" onClick={() => setMode("peace")}>
+                进入和平模式
+              </button>
+            </article>
+
+            <article className="mode-card">
+              <div>
+                <p className="eyebrow">竞争模式</p>
+                <h2>秘密登记与拍立得选择</h2>
+              </div>
+              <p>
+                公开拍立得翻开后，每名观众独立抽积点并秘密登记。小局结束后公开结算，抢先达成目标分者获胜。
+              </p>
+              <button
+                className="primary-action"
+                onClick={() => setMode("competition")}
+              >
+                进入竞争模式
+              </button>
+            </article>
+          </div>
+        </section>
+        {updateLogOpen && (
+          <UpdateLogPopover mode={updateLogMode} onClose={closeUpdateLog} />
+        )}
+        {feedbackOpen && (
+          <FeedbackModal
+            context={feedbackContext}
+            contextVisible={feedbackContextVisible}
+            frameSrc={feedbackFrameSrc}
+            onClose={closeFeedback}
+            onCopy={() => void copyFeedbackContext(feedbackContext)}
+            onToggleContext={() =>
+              setFeedbackContextVisible((current) => !current)
+            }
+          />
+        )}
+        {message && (
+          <div className="message-toast" role="status">
+            {message}
+          </div>
+        )}
+      </main>
+    );
+  }
+
+  if (mode === "competition") {
+    return (
+      <CompetitionModeScreen
+        competitionGame={competitionGame}
+        competitionPlayerCount={competitionPlayerCount}
+        competitionTargetScore={competitionTargetScore}
+        feedbackContext={feedbackContext}
+        feedbackContextVisible={feedbackContextVisible}
+        feedbackFrameSrc={feedbackFrameSrc}
+        feedbackOpen={feedbackOpen}
+        message={message}
+        selectedCompetitionCard={selectedCompetitionCard}
+        updateLogMode={updateLogMode}
+        updateLogOpen={updateLogOpen}
+        humanAction={competitionHumanAction}
+        humanRegistration={competitionHumanRegistration}
+        onBeginNextRound={beginNextCompetitionRound}
+        onCloseFeedback={closeFeedback}
+        onCloseUpdateLog={closeUpdateLog}
+        onCopyFeedback={() => void copyFeedbackContext(feedbackContext)}
+        onFeedback={openFeedback}
+        onHome={returnHome}
+        onAdvanceTurn={advanceCompetitionTurn}
+        onPass={passCompetitionRegistration}
+        onRegister={submitCompetitionRegistration}
+        onSelectCard={setSelectedCompetitionCard}
+        onSetPlayerCount={setCompetitionPlayerCount}
+        onSetTargetScore={setCompetitionTargetScore}
+        onStart={startCompetitionGame}
+        onToggleFeedbackContext={() =>
+          setFeedbackContextVisible((current) => !current)
+        }
+        onUpdateLog={openUpdateLog}
+      />
+    );
   }
 
   if (!game) {
@@ -460,6 +714,7 @@ export function App() {
           <button className="primary-action" onClick={startGame}>
             开始对局
           </button>
+          <button onClick={returnHome}>返回主页</button>
         </section>
         {rulesOpen && (
           <RulesModal
@@ -513,6 +768,7 @@ export function App() {
             {logOpen ? "隐藏日志" : "对局日志"}
           </button>
           <button onClick={() => setGame(null)}>重开</button>
+          <button onClick={returnHome}>主页</button>
           {game.phase === "setup" && (
             <button className="primary-action" onClick={beginNextRound}>
               开始下一轮
@@ -771,7 +1027,6 @@ function RulesModal(props: {
       <section className="rules-modal">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">V1 灰盒规则</p>
             <h2>游戏规则</h2>
           </div>
           <button onClick={props.onClose}>关闭</button>
@@ -993,7 +1248,9 @@ function BasicRules() {
 }
 
 function buildFeedbackContext(input: {
+  competitionGame: CompetitionGameState | null;
   game: GameState | null;
+  mode: "home" | "peace" | "competition";
   playerCount: 2 | 3 | 4;
   roleId: PlayerRoleId;
 }) {
@@ -1007,6 +1264,7 @@ function buildFeedbackContext(input: {
     timeZoneName: "short",
   });
   const game = input.game;
+  const competitionGame = input.competitionGame;
   const humanSeat =
     game?.seats.find((seat) => seat.id === HUMAN_PLAYER_ID) ?? null;
   const humanRound = game?.playerRounds[HUMAN_PLAYER_ID] ?? null;
@@ -1023,21 +1281,45 @@ function buildFeedbackContext(input: {
         return `${card.name}《${card.versionTitle}》`;
       })
       .join(" / ") || "无";
+  const competitionRegistration =
+    competitionGame?.registrations[HUMAN_PLAYER_ID] ?? null;
+  const competitionScoreSummary =
+    competitionGame?.seats
+      .map((seat) => `${seat.name}:${seat.score}`)
+      .join(" / ") ?? "无";
 
   return [
     `版本: ${APP_VERSION}`,
     `渠道: ${channel}`,
     `时间: ${timestamp}`,
     `页面: ${pageUrl}`,
-    `画面: ${game ? phaseLabels[game.phase] : "启动页"}`,
-    `人数: ${game?.seats.length ?? input.playerCount}`,
+    `模式: ${getModeLabel(input.mode)}`,
+    `画面: ${
+      competitionGame
+        ? getCompetitionPhaseTitle(competitionGame)
+        : game
+          ? phaseLabels[game.phase]
+          : "启动页"
+    }`,
+    `人数: ${competitionGame?.seats.length ?? game?.seats.length ?? input.playerCount}`,
     `观众角色: ${getRoleName(humanSeat?.roleId ?? input.roleId)}`,
-    `轮数: ${game?.round ?? "未开局"}`,
-    `目标分: ${game?.victoryScore ?? "未开局"}`,
-    `比分: ${scoreSummary}`,
-    `本轮积点: ${markerSummary}`,
+    `轮数: ${competitionGame ? `第 ${competitionGame.round} 小局 / 第 ${competitionGame.turn} 回合` : game?.round ?? "未开局"}`,
+    `目标分: ${competitionGame?.targetScore ?? game?.victoryScore ?? "未开局"}`,
+    `比分: ${competitionGame ? competitionScoreSummary : scoreSummary}`,
+    `本轮积点: ${
+      competitionGame
+        ? (competitionGame.playerMarkers[HUMAN_PLAYER_ID] ?? [])
+            .map((marker) => markerLabels[marker])
+            .join("、") || "无"
+        : markerSummary
+    }`,
     `你的拍立得: ${handSummary}`,
-    `最近日志: ${game?.log.slice(-3).join(" / ") || "无"}`,
+    `竞争模式登记: ${
+      competitionRegistration
+        ? `${getCardById(competitionRegistration.cardId).name}《${getCardById(competitionRegistration.cardId).versionTitle}》`
+        : "无"
+    }`,
+    `最近日志: ${(competitionGame?.log ?? game?.log)?.slice(-3).join(" / ") || "无"}`,
   ].join("\n");
 }
 
@@ -1178,6 +1460,607 @@ function FinalResults(props: { game: GameState }) {
   );
 }
 
+function CompetitionModeScreen(props: {
+  competitionGame: CompetitionGameState | null;
+  competitionPlayerCount: 2 | 3 | 4;
+  competitionTargetScore: number;
+  feedbackContext: string;
+  feedbackContextVisible: boolean;
+  feedbackFrameSrc: string;
+  feedbackOpen: boolean;
+  humanAction: boolean;
+  humanRegistration: { cardId: string; turn: number } | null;
+  message: string | null;
+  selectedCompetitionCard: string | null;
+  updateLogMode: "latest" | "recent";
+  updateLogOpen: boolean;
+  onBeginNextRound: () => void;
+  onCloseFeedback: () => void;
+  onCloseUpdateLog: () => void;
+  onCopyFeedback: () => void;
+  onFeedback: () => void;
+  onHome: () => void;
+  onAdvanceTurn: () => void;
+  onPass: () => void;
+  onRegister: () => void;
+  onSelectCard: (cardId: string | null) => void;
+  onSetPlayerCount: (count: 2 | 3 | 4) => void;
+  onSetTargetScore: (score: number) => void;
+  onStart: () => void;
+  onToggleFeedbackContext: () => void;
+  onUpdateLog: () => void;
+}) {
+  const game = props.competitionGame;
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+
+  if (!game) {
+    return (
+      <main className="app-shell">
+        <section className="setup-panel">
+          <div>
+            <p className="eyebrow">竞争模式</p>
+            <h1>秘密登记拍立得</h1>
+            <div className="version-row">
+              <span className="version-pill">{APP_VERSION}</span>
+              <button className="text-action" onClick={props.onUpdateLog}>
+                更新记录
+              </button>
+              <button className="text-action" onClick={props.onFeedback}>
+                反馈
+              </button>
+            </div>
+          </div>
+
+          <div className="setup-grid">
+            <label className="field">
+              <span>观众人数</span>
+              <select
+                value={props.competitionPlayerCount}
+                onChange={(event) =>
+                  props.onSetPlayerCount(Number(event.target.value) as 2 | 3 | 4)
+                }
+              >
+                <option value={2}>2 人</option>
+                <option value={3}>3 人</option>
+                <option value={4}>4 人</option>
+              </select>
+            </label>
+
+            <label className="field">
+              <span>目标分</span>
+              <select
+                value={props.competitionTargetScore}
+                onChange={(event) => props.onSetTargetScore(Number(event.target.value))}
+              >
+                <option value={10}>10 分快速局</option>
+                <option value={15}>15 分标准局</option>
+                <option value={20}>20 分长局</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="info-grid special-rule-grid">
+            <article>
+              <h3>玩法差异</h3>
+              <p>
+                每小局翻开人数 +1 张公开拍立得。每名观众独立抽积点，最多秘密登记 1 张，结算前不公开。
+              </p>
+            </article>
+            <article>
+              <h3>结算重点</h3>
+              <p>
+                同一张拍立得多人登记时，满足条件者中登记更早者得分；同回合冲突用本小局随机优先序。
+              </p>
+            </article>
+          </div>
+
+          <button className="secondary-action" onClick={() => setRulesOpen(true)}>
+            游戏规则
+          </button>
+
+          <button className="primary-action" onClick={props.onStart}>
+            开始竞争模式
+          </button>
+          <button onClick={props.onHome}>返回主页</button>
+          {rulesOpen && (
+            <CompetitionRulesModal
+              unlockedBondIds={new Set()}
+              onClose={() => setRulesOpen(false)}
+            />
+          )}
+        </section>
+        <SharedOverlays
+          feedbackContext={props.feedbackContext}
+          feedbackContextVisible={props.feedbackContextVisible}
+          feedbackFrameSrc={props.feedbackFrameSrc}
+          feedbackOpen={props.feedbackOpen}
+          message={props.message}
+          updateLogMode={props.updateLogMode}
+          updateLogOpen={props.updateLogOpen}
+          onCloseFeedback={props.onCloseFeedback}
+          onCloseUpdateLog={props.onCloseUpdateLog}
+          onCopyFeedback={props.onCopyFeedback}
+          onToggleFeedbackContext={props.onToggleFeedbackContext}
+        />
+      </main>
+    );
+  }
+
+  const latestResult = game.roundResults.at(-1);
+  const humanMarkers = game.playerMarkers[HUMAN_PLAYER_ID] ?? [];
+  const humanCanAct =
+    game.phase === "register" &&
+    !props.humanRegistration &&
+    !props.humanAction;
+  const competitionTurnComplete =
+    game.phase === "register" &&
+    game.seats.every((seat) => game.registrations[seat.id] || game.turnActions[seat.id]);
+
+  return (
+    <main className="game-shell">
+      <header className="top-bar">
+        <div>
+          <p className="eyebrow">竞争模式 / 第 {game.round} 小局</p>
+          <h1>{getCompetitionPhaseTitle(game)}</h1>
+          <div className="version-row">
+            <span className="version-pill">{APP_VERSION}</span>
+            <button className="text-action" onClick={props.onUpdateLog}>
+              更新记录
+            </button>
+            <button className="text-action" onClick={props.onFeedback}>
+              反馈
+            </button>
+          </div>
+        </div>
+        <div className="top-actions">
+          <button onClick={() => setGuideOpen((current) => !current)}>
+            {guideOpen ? "隐藏建议" : "显示建议"}
+          </button>
+          <button onClick={() => props.onSelectCard(null)}>清除选择</button>
+          <button onClick={() => setRulesOpen(true)}>游戏规则</button>
+          <button onClick={props.onHome}>主页</button>
+          {game.phase === "round_result" && (
+            <button className="primary-action" onClick={props.onBeginNextRound}>
+              开始下一小局
+            </button>
+          )}
+        </div>
+      </header>
+
+      {guideOpen ? (
+        <section className="stage-guide stage-guide-dismissible" aria-live="polite">
+          <div>
+            <span>当前建议</span>
+            <strong>{getCompetitionGuideTitle(game, props.humanRegistration, props.humanAction)}</strong>
+          </div>
+          <p>{getCompetitionGuideBody(game, props.humanRegistration, props.humanAction)}</p>
+        </section>
+      ) : null}
+
+      <SharedOverlays
+        feedbackContext={props.feedbackContext}
+        feedbackContextVisible={props.feedbackContextVisible}
+        feedbackFrameSrc={props.feedbackFrameSrc}
+        feedbackOpen={props.feedbackOpen}
+        message={props.message}
+        updateLogMode={props.updateLogMode}
+        updateLogOpen={props.updateLogOpen}
+        onCloseFeedback={props.onCloseFeedback}
+        onCloseUpdateLog={props.onCloseUpdateLog}
+        onCopyFeedback={props.onCopyFeedback}
+        onToggleFeedbackContext={props.onToggleFeedbackContext}
+      />
+
+      <section className="score-row">
+        {game.seats.map((seat) => (
+          <article className="score-card" key={seat.id}>
+            <span>{seat.name}</span>
+            <strong>{seat.score}</strong>
+            <small title={getCompetitionArchiveSummary(game, seat.id)}>
+              {getCompetitionArchiveSummary(game, seat.id)}
+            </small>
+          </article>
+        ))}
+        <article className="score-card target">
+          <span>目标分</span>
+          <strong>{game.targetScore}</strong>
+          <small>竞争模式</small>
+        </article>
+      </section>
+
+      {game.phase === "register" && (
+        <section className="competition-layout">
+          <section className="hand-panel competition-market-panel">
+            <div className="panel-heading">
+              <div>
+                <h2>公开拍立得</h2>
+                <span>结算前只公开拍立得，不公开其他观众登记</span>
+              </div>
+            </div>
+            <div className="card-grid competition-card-grid">
+              {game.market.map((cardId) => {
+                const card = getCardById(cardId);
+                const evaluation = evaluateCompetitionCardCondition(
+                  game,
+                  HUMAN_PLAYER_ID,
+                  cardId,
+                );
+
+                return (
+                  <CharacterCardView
+                    bondNames={getCompetitionArchiveBondNames(
+                      game.archives[HUMAN_PLAYER_ID] ?? [],
+                      cardId,
+                      game.unlockedBondIds[HUMAN_PLAYER_ID] ?? [],
+                    )}
+                    card={card}
+                    evaluationMet={evaluation.met}
+                    key={card.id}
+                    mode="score"
+                    scoreLabel={`${getCompetitionCardScore(cardId)} 分`}
+                    selected={props.selectedCompetitionCard === cardId}
+                    stageManaged={false}
+                    wagered={props.humanRegistration?.cardId === cardId}
+                    wagerLabel="已登记"
+                    onClick={() => {
+                      if (humanCanAct) {
+                        props.onSelectCard(cardId);
+                      }
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </section>
+
+          <div className="competition-side-stack">
+            <section className="board-panel">
+              <div className="panel-heading">
+                <div>
+                  <h2>你的积点</h2>
+                  <span>本小局已抽 {humanMarkers.length} / 10</span>
+                </div>
+                <span>第 {game.turn} / 4 回合</span>
+              </div>
+              <div className="marker-pile">
+                {humanMarkers.length === 0 && (
+                  <span className="empty-state">等待本小局第一回合抽取积点</span>
+                )}
+                {humanMarkers.map((marker, index) => (
+                  <span className={`marker marker-${marker}`} key={`${marker}-${index}`}>
+                    {markerLabels[marker]}
+                  </span>
+                ))}
+              </div>
+              <div className="marker-counts">
+                {MARKER_CONFIGS.map((marker) => (
+                  <div key={marker.id}>
+                    <span>{marker.label}</span>
+                    <strong>
+                      {humanMarkers.filter((item) => item === marker.id).length}/{marker.count}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="board-panel">
+              <div className="panel-heading">
+                <div>
+                  <h2>秘密登记</h2>
+                  <span>{getCompetitionRegistrationLabel(game, props.humanRegistration, props.humanAction)}</span>
+                </div>
+                <div className="hand-actions">
+                  {humanCanAct && (
+                    <>
+                      <button
+                        className="primary-action"
+                        disabled={!props.selectedCompetitionCard}
+                        onClick={props.onRegister}
+                      >
+                        秘密登记所选
+                      </button>
+                      <button onClick={props.onPass}>本回合不登记</button>
+                    </>
+                  )}
+                </div>
+              </div>
+              {competitionTurnComplete && (
+                <button className="primary-action full-width-action" onClick={props.onAdvanceTurn}>
+                  {game.turn >= 4 ? "结算本小局" : "抽取积点"}
+                </button>
+              )}
+              <div className="competition-secret-list">
+                <div>
+                  <strong>你</strong>
+                  <span>
+                    {getHumanCompetitionSecretLabel(
+                      props.humanRegistration,
+                      props.humanAction,
+                    )}
+                  </span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+      )}
+
+      {latestResult && game.phase === "round_result" && (
+        <CompetitionRoundResultPanel game={game} result={latestResult} />
+      )}
+
+      {game.phase === "game_over" && <CompetitionFinalResults game={game} />}
+      {rulesOpen && (
+        <CompetitionRulesModal
+          unlockedBondIds={getCompetitionUnlockedBondIds(game)}
+          onClose={() => setRulesOpen(false)}
+        />
+      )}
+    </main>
+  );
+}
+
+function SharedOverlays(props: {
+  feedbackContext: string;
+  feedbackContextVisible: boolean;
+  feedbackFrameSrc: string;
+  feedbackOpen: boolean;
+  message: string | null;
+  updateLogMode: "latest" | "recent";
+  updateLogOpen: boolean;
+  onCloseFeedback: () => void;
+  onCloseUpdateLog: () => void;
+  onCopyFeedback: () => void;
+  onToggleFeedbackContext: () => void;
+}) {
+  return (
+    <>
+      {props.updateLogOpen && (
+        <UpdateLogPopover mode={props.updateLogMode} onClose={props.onCloseUpdateLog} />
+      )}
+      {props.feedbackOpen && (
+        <FeedbackModal
+          context={props.feedbackContext}
+          contextVisible={props.feedbackContextVisible}
+          frameSrc={props.feedbackFrameSrc}
+          onClose={props.onCloseFeedback}
+          onCopy={props.onCopyFeedback}
+          onToggleContext={props.onToggleFeedbackContext}
+        />
+      )}
+      {props.message && (
+        <div className="message-toast" role="status">
+          {props.message}
+        </div>
+      )}
+    </>
+  );
+}
+
+function CompetitionRoundResultPanel(props: {
+  game: CompetitionGameState;
+  result: NonNullable<CompetitionGameState["roundResults"][number]>;
+}) {
+  return (
+    <section className="result-panel">
+      <div className="panel-heading">
+        <div>
+          <h2>第 {props.result.round} 小局结算</h2>
+          <span>秘密登记已公开</span>
+        </div>
+      </div>
+      <div className="result-grid">
+        {props.result.playerResults.map((score) => {
+          const card = score.cardId ? getCardById(score.cardId) : null;
+          const bondNames = score.bondIds
+            .map((bondId) => BOND_RULES.find((bond) => bond.id === bondId)?.name)
+            .filter((name): name is string => Boolean(name));
+
+          return (
+            <article className="result-card" key={score.playerId}>
+              <strong>{getCompetitionSeatLabel(props.game, score.playerId)}</strong>
+              <span>{card ? `${card.name}《${card.versionTitle}》` : "未登记"}</span>
+              <b>{score.success ? `+${score.totalScore}` : "+0"}</b>
+              <small>
+                {score.registrationTurn ? `第 ${score.registrationTurn} 回合登记 / ` : ""}
+                {score.reason}
+                {bondNames.length > 0 ? ` / 羁绊：${bondNames.join("、")}` : ""}
+              </small>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CompetitionFinalResults(props: { game: CompetitionGameState }) {
+  const winners = new Set(getCompetitionWinners(props.game).map((seat) => seat.id));
+  const ranking = [...props.game.seats].sort(
+    (left, right) => right.score - left.score || left.name.localeCompare(right.name),
+  );
+
+  return (
+    <section className="result-panel final-results">
+      <div className="panel-heading">
+        <div>
+          <h2>竞争模式最终结算</h2>
+          <span>达到目标分后结束</span>
+        </div>
+        <strong>{getCompetitionWinners(props.game).map((seat) => seat.name).join("、")} 获胜</strong>
+      </div>
+      <div className="final-ranking">
+        {ranking.map((seat, index) => (
+          <article
+            className={winners.has(seat.id) ? "final-row winner" : "final-row"}
+            key={seat.id}
+          >
+            <b>#{index + 1}</b>
+            <div>
+              <strong>{seat.name}</strong>
+              <span>剧情档案 {props.game.archives[seat.id]?.length ?? 0} 张</span>
+            </div>
+            <strong>{seat.score} 分</strong>
+            <small>
+              竞争羁绊成就 {props.game.unlockedBondIds[seat.id]?.length ?? 0} 条
+            </small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CompetitionRulesModal(props: {
+  unlockedBondIds: Set<string>;
+  onClose: () => void;
+}) {
+  const [activeTab, setActiveTab] = useState<
+    "basic" | "score" | "bonds" | "achievements"
+  >("basic");
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <section className="rules-modal">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">竞争模式</p>
+            <h2>游戏规则</h2>
+          </div>
+          <button onClick={props.onClose}>关闭</button>
+        </div>
+        <div className="rules-tabs">
+          <button
+            className={activeTab === "basic" ? "active" : ""}
+            onClick={() => setActiveTab("basic")}
+          >
+            基本规则
+          </button>
+          <button
+            className={activeTab === "score" ? "active" : ""}
+            onClick={() => setActiveTab("score")}
+          >
+            结算规则
+          </button>
+          <button
+            className={activeTab === "bonds" ? "active" : ""}
+            onClick={() => setActiveTab("bonds")}
+          >
+            羁绊规则
+          </button>
+          <button
+            className={activeTab === "achievements" ? "active" : ""}
+            onClick={() => setActiveTab("achievements")}
+          >
+            羁绊成就
+          </button>
+        </div>
+
+        {activeTab === "basic" && (
+          <div className="info-grid">
+            <article>
+              <h3>一场怎么赢</h3>
+              <p>
+                竞争模式由多个小局组成。每小局固定 4 回合，整场对局会持续到有观众达到或超过目标分。
+              </p>
+              <p>
+                默认目标分为 15 分；快速局是 10 分，长局是 20 分。
+              </p>
+            </article>
+            <article>
+              <h3>公开拍立得</h3>
+              <p>
+                每小局开始时，场面会翻开观众人数 +1 张公开拍立得。所有观众都从这组公开拍立得里选择是否登记。
+              </p>
+              <p>
+                公开拍立得一直可见，但其他观众登记了哪一张会在结算前保持隐藏。
+              </p>
+            </article>
+            <article>
+              <h3>积点怎么抽</h3>
+              <p>
+                每名观众都有自己的积点区。4 回合分别抽取 4、3、2、1 枚积点，本小局总计 10 枚。
+              </p>
+              <p>
+                积点统计里的“家族 1/3”表示本小局你已经抽到 1 枚家族积点。
+              </p>
+            </article>
+            <article>
+              <h3>秘密登记</h3>
+              <p>
+                每名观众每小局最多登记 1 张公开拍立得。登记后不可更换，也不能撤回。
+              </p>
+              <p>
+                你也可以在当前回合选择等待，下一回合抽到新积点后再决定。
+              </p>
+            </article>
+          </div>
+        )}
+
+        {activeTab === "score" && (
+          <div className="info-grid">
+            <article>
+              <h3>先看条件</h3>
+              <p>
+                小局结束时统一公开登记结果。只有登记拍立得并满足条件的观众，才有资格拿到这张拍立得的分数。
+              </p>
+              <p>
+                没有登记、条件未满足，或冲突失败，本小局都不会通过这张拍立得得分。
+              </p>
+            </article>
+            <article>
+              <h3>多人登记同一张</h3>
+              <p>
+                同一张拍立得被多人登记时，只能有一名观众得分。登记回合更早者优先。
+              </p>
+              <p>
+                如果同回合登记同一张，则按本小局随机优先序破平；若更早者不满足条件，会顺延给下一个满足条件者。
+              </p>
+            </article>
+            <article>
+              <h3>家族荣光</h3>
+              <p>
+                家族荣光在竞争模式中不是直接胜利，而是 8 分高分牌。
+              </p>
+              <p>
+                达到目标分后结束整场对局；多人同时达到时，分数更高者胜，仍同分则并列。
+              </p>
+            </article>
+          </div>
+        )}
+
+        {activeTab === "bonds" && (
+          <div className="info-grid">
+            <article>
+              <h3>剧情档案</h3>
+              <p>
+                只有成功计分过的拍立得会进入该观众的竞争模式剧情档案。
+              </p>
+              <p>
+                条件失败或冲突失败的登记不会进入档案，也不会触发跨小局羁绊。
+              </p>
+            </article>
+            <article>
+              <h3>跨小局羁绊</h3>
+              <p>
+                当本小局新计分拍立得与剧情档案里的旧拍立得形成羁绊时，触发跨小局羁绊。
+              </p>
+              <p>
+                竞争模式的所有羁绊奖励统一为 +1，每条羁绊每名观众每场只触发一次。
+              </p>
+            </article>
+          </div>
+        )}
+        {activeTab === "achievements" && (
+          <BondAchievements unlockedBondIds={props.unlockedBondIds} />
+        )}
+      </section>
+    </div>
+  );
+}
+
 function getSuccessfulScoringCards(
   game: GameState,
   hand: readonly string[],
@@ -1194,9 +2077,11 @@ function CharacterCardView(props: {
   bondNames: string[];
   evaluationMet: boolean;
   mode: "discard" | "score";
+  scoreLabel?: string;
   selected: boolean;
   stageManaged: boolean;
   wagered: boolean;
+  wagerLabel?: string;
   onClick: () => void;
 }) {
   const className = [
@@ -1217,7 +2102,7 @@ function CharacterCardView(props: {
       <div className="card-body">
         <div className="card-title-row">
           <strong>{props.card.name}</strong>
-          <span>{formatCardScore(props.card)}</span>
+          <span>{props.scoreLabel ?? formatCardScore(props.card)}</span>
         </div>
         <p>{props.card.versionTitle}</p>
         <small>{conditionSummary(props.card.condition)}</small>
@@ -1231,7 +2116,7 @@ function CharacterCardView(props: {
           <b className={props.evaluationMet ? "status met" : "status pending"}>
             {props.evaluationMet ? "已满足" : "未满足"}
           </b>
-          {props.wagered && <b className="status wager">已签署</b>}
+          {props.wagered && <b className="status wager">{props.wagerLabel ?? "已签署"}</b>}
           {props.stageManaged && <b className="status stage-managed">已排演</b>}
           {props.selected && (
             <b className={props.mode === "score" ? "status action" : "status discard"}>
@@ -1258,6 +2143,27 @@ function getUnlockedBondIds(game: GameState | null): Set<string> {
       result.scores.flatMap((score) => score.bondIds),
     ) ?? [],
   );
+}
+
+function getCompetitionUnlockedBondIds(game: CompetitionGameState | null): Set<string> {
+  return new Set(game?.unlockedBondIds[HUMAN_PLAYER_ID] ?? []);
+}
+
+function getCompetitionArchiveSummary(
+  game: CompetitionGameState,
+  playerId: string,
+): string {
+  const archive = game.archives[playerId] ?? [];
+  if (archive.length === 0) {
+    return "尚未达成拍立得";
+  }
+
+  return `已达成：${archive
+    .map((cardId) => {
+      const card = getCardById(cardId);
+      return `${card.name}《${card.versionTitle}》`;
+    })
+    .join("、")}`;
 }
 
 function getNewUnlockedBondNames(
@@ -1456,6 +2362,134 @@ function getRoleUseHint(roleId: PlayerRoleId): string {
       return "按钮只会在第一次或第二次弃置阶段出现；本次少弃，下一次要补弃。";
     default:
       return "";
+  }
+}
+
+function getCompetitionPhaseTitle(game: CompetitionGameState): string {
+  if (game.phase === "game_over") {
+    return "竞争模式结束";
+  }
+
+  if (game.phase === "round_result") {
+    return "小局结算";
+  }
+
+  return `第 ${game.turn} 回合秘密登记`;
+}
+
+function getCompetitionGuideTitle(
+  game: CompetitionGameState,
+  registration: { cardId: string; turn: number } | null,
+  acted: boolean,
+): string {
+  if (game.phase === "game_over") {
+    return "整场对局结束";
+  }
+
+  if (game.phase === "round_result") {
+    return "查看公开登记结果";
+  }
+
+  if (registration) {
+    return "本小局已经登记";
+  }
+
+  if (acted) {
+    return "等待进入下一回合";
+  }
+
+  return "选择是否秘密登记";
+}
+
+function getCompetitionGuideBody(
+  game: CompetitionGameState,
+  registration: { cardId: string; turn: number } | null,
+  acted: boolean,
+): string {
+  if (game.phase === "game_over") {
+    return "分数达到目标分后结束。竞争模式的羁绊成就与和平模式分开记录。";
+  }
+
+  if (game.phase === "round_result") {
+    return "本小局的秘密登记已经公开。查看得分、冲突顺延和跨小局羁绊后，开始下一小局。";
+  }
+
+  if (registration) {
+    const card = getCardById(registration.cardId);
+    return `你在第 ${registration.turn} 回合登记了 ${card.name}《${card.versionTitle}》。登记后不能更换，继续等待结算。`;
+  }
+
+  if (acted) {
+    return "你本回合选择不登记。下一回合会抽取新的积点，你仍可继续等待。";
+  }
+
+  return "你可以登记 1 张场面拍立得，也可以继续等待更多积点。登记后不可更换，结算前其他观众看不到你的选择。";
+}
+
+function getCompetitionRegistrationLabel(
+  game: CompetitionGameState,
+  registration: { cardId: string; turn: number } | null,
+  acted: boolean,
+): string {
+  if (registration) {
+    return `已在第 ${registration.turn} 回合秘密登记`;
+  }
+
+  if (acted) {
+    return "本回合已选择等待";
+  }
+
+  if (game.phase !== "register") {
+    return "登记阶段已结束";
+  }
+
+  return "本小局尚未登记";
+}
+
+function getHumanCompetitionSecretLabel(
+  registration: { cardId: string; turn: number } | null,
+  acted: boolean,
+): string {
+  if (registration) {
+    const card = getCardById(registration.cardId);
+    return `你已登记：${card.name}《${card.versionTitle}》`;
+  }
+
+  return acted ? "本回合等待" : "尚未登记";
+}
+
+function getCompetitionArchiveBondNames(
+  archive: readonly string[],
+  cardId: string,
+  unlockedBondIds: readonly string[],
+): string[] {
+  return BOND_RULES.filter(
+    (bond) =>
+      !unlockedBondIds.includes(bond.id) &&
+      bond.characterIds.includes(cardId) &&
+      bond.characterIds.some((bondCardId) => archive.includes(bondCardId)),
+  ).map((bond) => bond.name);
+}
+
+function getCompetitionSeatLabel(
+  game: CompetitionGameState,
+  playerId: string,
+): string {
+  return game.seats.find((seat) => seat.id === playerId)?.name ?? playerId;
+}
+
+function getModeLabel(mode: "home" | "peace" | "competition"): string {
+  switch (mode) {
+    case "home":
+      return "主页";
+    case "peace":
+      return "和平模式";
+    case "competition":
+      return "竞争模式";
+    default: {
+      const exhaustive: never = mode;
+      return exhaustive;
+    }
   }
 }
 

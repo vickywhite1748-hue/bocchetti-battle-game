@@ -2,6 +2,7 @@ export * from "./bonds";
 export * from "./ai";
 export * from "./characters";
 export * from "./conditions";
+export * from "./competition";
 export * from "./engine";
 export * from "./markers";
 export * from "./random";

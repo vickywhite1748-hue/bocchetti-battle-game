@@ -200,6 +200,28 @@ span {
   gap: 14px;
 }
 
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mode-card {
+  display: grid;
+  align-content: space-between;
+  gap: 14px;
+  min-height: 250px;
+  border: 1px solid #ded3c5;
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 16px;
+}
+
+.mode-card p {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
 .field {
   display: grid;
   gap: 8px;
@@ -327,6 +349,26 @@ span {
   color: #5f544c;
   font-size: 14px;
   line-height: 1.5;
+}
+
+.stage-guide-dismissible {
+  grid-template-columns: minmax(180px, 0.28fr) minmax(0, 1fr);
+}
+
+.stage-guide-dismissible button,
+.stage-guide-collapsed button {
+  align-self: center;
+  white-space: nowrap;
+}
+
+.stage-guide-collapsed {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 10px 12px;
+}
+
+.stage-guide-collapsed strong {
+  align-self: center;
+  font-size: 14px;
 }
 
 .action-hint {
@@ -556,6 +598,12 @@ span {
   font-size: 24px;
 }
 
+.score-card small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .score-card.target {
   background: #f3eadf;
 }
@@ -569,6 +617,66 @@ span {
 
 .board-grid-solo {
   grid-template-columns: 1fr;
+}
+
+.competition-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 0.78fr);
+  gap: 14px;
+  margin-bottom: 14px;
+  align-items: start;
+}
+
+.competition-side-stack {
+  position: sticky;
+  top: 12px;
+  display: grid;
+  gap: 14px;
+  align-self: stretch;
+}
+
+.competition-side-panel {
+  position: sticky;
+  top: 12px;
+}
+
+.competition-market-panel {
+  min-width: 0;
+}
+
+.competition-card-grid {
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+}
+
+.competition-side-stack .board-panel {
+  min-width: 0;
+}
+
+.competition-side-stack .board-panel:last-child {
+  display: grid;
+  align-content: start;
+}
+
+.competition-side-stack .panel-heading {
+  align-items: start;
+}
+
+.competition-side-stack .hand-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: min(100%, 300px);
+  justify-content: stretch;
+}
+
+.competition-side-stack .hand-actions button {
+  width: 100%;
+  min-height: 50px;
+  white-space: normal;
+}
+
+.full-width-action {
+  width: 100%;
+  margin-bottom: 10px;
 }
 
 .board-panel,
@@ -665,6 +773,30 @@ span {
 
 .marker-counts strong {
   color: #302722;
+}
+
+.competition-secret-list {
+  display: grid;
+  gap: 8px;
+}
+
+.competition-secret-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #ded3c5;
+  border-radius: 6px;
+  background: #fffaf2;
+  padding: 9px 10px;
+}
+
+.competition-secret-list strong {
+  color: #302722;
+}
+
+.competition-secret-list span {
+  text-align: right;
+  font-size: 13px;
 }
 
 .log-panel ol {
@@ -1026,10 +1158,12 @@ span {
 @media (max-width: 980px) {
   .score-row,
   .board-grid,
+  .competition-layout,
   .result-grid,
   .info-grid,
   .bond-grid,
   .feedback-layout,
+  .mode-grid,
   .role-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1040,6 +1174,19 @@ span {
 
   .marker-counts {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .competition-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .competition-side-stack,
+  .competition-side-panel {
+    position: static;
+  }
+
+  .competition-card-grid {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
   }
 
   .final-row {
@@ -1068,13 +1215,25 @@ span {
     grid-template-columns: 1fr;
   }
 
+  .stage-guide-dismissible,
+  .stage-guide-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .stage-guide-dismissible button,
+  .stage-guide-collapsed button {
+    justify-self: stretch;
+  }
+
   .setup-grid,
   .score-row,
   .board-grid,
+  .competition-layout,
   .result-grid,
   .info-grid,
   .bond-grid,
   .feedback-layout,
+  .mode-grid,
   .role-list,
   .card-grid {
     grid-template-columns: 1fr;
@@ -1083,6 +1242,10 @@ span {
   .top-actions,
   .hand-actions {
     justify-content: stretch;
+  }
+
+  .competition-side-stack .hand-actions {
+    grid-template-columns: 1fr;
   }
 
   .action-hint {
@@ -1098,6 +1261,10 @@ span {
 
   .marker-counts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .competition-card-grid {
+    grid-template-columns: 1fr;
   }
 
   .update-log-popover {

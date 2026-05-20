@@ -72,7 +72,7 @@ describe("core engine", () => {
     const passed = evaluateCondition(card!.condition, [
       "family",
       "family",
-      "love",
+      "stage",
     ]);
     const failed = evaluateCondition(card!.condition, ["family", "gang"]);
 
