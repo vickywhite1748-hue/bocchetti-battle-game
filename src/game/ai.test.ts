@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createGame,
   drawCurrentStep,
+  estimateCardValue,
   runAiForCurrentDecision,
   runGameWithAiOnly,
 } from "./index";
@@ -46,6 +47,14 @@ describe("AI decisions", () => {
 
     expect(acted.seats.slice(1).every((seat) => acted.playerRounds[seat.id])).toBe(
       true,
+    );
+  });
+
+  it("does not value unmet family glory as a 99-point card while choosing discards", () => {
+    const state = createGame({ playerCount: 2, random: stableRandom });
+
+    expect(estimateCardValue(state, "player-1", "sonny-family-price")).toBeLessThan(
+      10,
     );
   });
 });

@@ -316,6 +316,17 @@ span {
   justify-content: flex-end;
 }
 
+.panel-heading > .hand-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.hand-actions button {
+  min-height: 42px;
+}
+
 .stage-guide {
   display: grid;
   grid-template-columns: minmax(180px, 0.28fr) minmax(0, 1fr);
@@ -371,11 +382,10 @@ span {
   font-size: 14px;
 }
 
-.action-hint {
-  flex-basis: 100%;
-  color: #8a5d2e;
-  text-align: right;
-  line-height: 1.35;
+.analysis-toggle.active {
+  border-color: #35647f;
+  background: #e6f0f7;
+  color: #234c63;
 }
 
 .message-toast {
@@ -836,6 +846,33 @@ span {
   font-size: 18px;
 }
 
+.analysis-panel {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 12px;
+  border: 1px solid #c8d8df;
+  border-radius: 6px;
+  background: #f3f8fa;
+  padding: 10px 12px;
+}
+
+.analysis-panel div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.analysis-panel span,
+.analysis-panel small {
+  color: #35647f;
+}
+
+.analysis-panel strong {
+  color: #263f4f;
+  line-height: 1.35;
+}
+
 .scout-strip {
   display: flex;
   align-items: center;
@@ -938,8 +975,43 @@ span {
 }
 
 .card-body p,
-.card-body small {
+.card-body small,
+.condition-summary {
   line-height: 1.42;
+}
+
+.condition-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  color: #5f544c;
+  font-size: 12px;
+}
+
+.condition-fragment {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.condition-operator {
+  color: #8a5d2e;
+  font-weight: 700;
+}
+
+.condition-marker {
+  display: inline-grid;
+  place-items: center;
+  min-width: 38px;
+  min-height: 22px;
+  border-radius: 999px;
+  color: #211b18;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .bond-ready-strip {
@@ -960,6 +1032,57 @@ span {
   color: #5f3b16;
   font-size: 12px;
   line-height: 1.25;
+}
+
+.analysis-strip {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #c8d8df;
+  border-radius: 6px;
+  background: #f4f9fb;
+  padding: 7px;
+}
+
+.analysis-strip div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.analysis-strip span {
+  color: #345984;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.analysis-strip strong {
+  color: #263f4f;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.analysis-strip small {
+  color: #4f6570;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.analysis-strip.risk-locked,
+.analysis-strip.risk-strong {
+  border-color: #b8d2aa;
+  background: #f0f8eb;
+}
+
+.analysis-strip.risk-volatile,
+.analysis-strip.risk-endgame {
+  border-color: #e1c493;
+  background: #fff8e8;
+}
+
+.analysis-strip.risk-longshot {
+  border-color: #e5c0bb;
+  background: #fff1ee;
 }
 
 .status {
@@ -1244,12 +1367,14 @@ span {
     justify-content: stretch;
   }
 
-  .competition-side-stack .hand-actions {
-    grid-template-columns: 1fr;
+  .analysis-panel div,
+  .analysis-strip div {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
-  .action-hint {
-    text-align: left;
+  .competition-side-stack .hand-actions {
+    grid-template-columns: 1fr;
   }
 
   .top-actions button,

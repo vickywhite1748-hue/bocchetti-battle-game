@@ -1,4 +1,5 @@
 export * from "./bonds";
+export * from "./analysis";
 export * from "./ai";
 export * from "./characters";
 export * from "./conditions";

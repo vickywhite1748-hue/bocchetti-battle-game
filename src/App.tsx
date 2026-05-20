@@ -5,6 +5,8 @@ import {
   PLAYER_ROLES,
   advanceCompetitionAfterActions,
   advanceAfterDiscards,
+  analyzeCompetitionCards,
+  analyzePeaceCards,
   cancelWager,
   createCompetitionGame,
   createGame,
@@ -33,6 +35,8 @@ import {
   useStageManagerAbility,
 } from "./game";
 import type {
+  AnalysisReport,
+  CardAnalysis,
   CharacterCard,
   CompetitionGameState,
   Condition,
@@ -43,9 +47,18 @@ import type {
 } from "./game";
 
 const HUMAN_PLAYER_ID = "player-1";
-const APP_VERSION = "v1.5.0";
+const APP_VERSION = "v1.5.1";
 const UPDATE_STORAGE_KEY = "bocchetti-battle-dismissed-version";
 const UPDATE_LOGS = [
+  {
+    version: "v1.5.1",
+    items: [
+      "新增单机辅助分析，和平模式手牌和竞争模式公开拍立得会显示成功率、期望分、风险标签和建议。",
+      "结算阶段不再允许选择未满足条件的拍立得作为计分牌，避免误结算 0 分。",
+      "家族荣光在 AI 和辅助估值中按 8 分参考值处理，不再影响普通取舍判断。",
+      "优化辅助界面：按钮横向排列，去除重复提示，拍立得条件中的积点标记与上方积点颜色保持一致。",
+    ],
+  },
   {
     version: "v1.5.0",
     items: [
@@ -138,6 +151,8 @@ export function App() {
   const [feedbackContext, setFeedbackContext] = useState("");
   const [feedbackFrameSrc, setFeedbackFrameSrc] = useState("");
   const [feedbackContextVisible, setFeedbackContextVisible] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [competitionAnalysisOpen, setCompetitionAnalysisOpen] = useState(false);
   const [updateLogMode, setUpdateLogMode] = useState<"latest" | "recent">(
     "latest",
   );
@@ -167,6 +182,24 @@ export function App() {
     ? getDiscardButtonHint(game, selectedCards.length, requiredDiscards)
     : null;
   const stageGuide = game ? getStageGuide(game, selectedCards.length, requiredDiscards) : null;
+  const peaceAnalysis = useMemo(
+    () =>
+      game && humanRound
+        ? analyzePeaceCards(game, HUMAN_PLAYER_ID, humanRound.hand)
+        : null,
+    [game, humanRound],
+  );
+  const competitionAnalysis = useMemo(
+    () =>
+      competitionGame && competitionGame.phase === "register"
+        ? analyzeCompetitionCards(
+            competitionGame,
+            HUMAN_PLAYER_ID,
+            competitionGame.market,
+          )
+        : null,
+    [competitionGame],
+  );
 
   useEffect(() => {
     if (!message) {
@@ -417,6 +450,14 @@ export function App() {
       return;
     }
 
+    if (
+      selectedScoringCard &&
+      !successfulCards.some((card) => card.id === selectedScoringCard)
+    ) {
+      setMessage("这张拍立得当前未满足条件，不能作为本轮计分拍立得。");
+      return;
+    }
+
     try {
       let next = game;
       const scoringCardId = selectedScoringCard ?? successfulCards[0]?.id;
@@ -619,6 +660,8 @@ export function App() {
   if (mode === "competition") {
     return (
       <CompetitionModeScreen
+        analysisOpen={competitionAnalysisOpen}
+        analysisReport={competitionAnalysis}
         competitionGame={competitionGame}
         competitionPlayerCount={competitionPlayerCount}
         competitionTargetScore={competitionTargetScore}
@@ -645,6 +688,7 @@ export function App() {
         onSetPlayerCount={setCompetitionPlayerCount}
         onSetTargetScore={setCompetitionTargetScore}
         onStart={startCompetitionGame}
+        onToggleAnalysis={() => setCompetitionAnalysisOpen((current) => !current)}
         onToggleFeedbackContext={() =>
           setFeedbackContextVisible((current) => !current)
         }
@@ -928,6 +972,14 @@ export function App() {
               )}
             </div>
             <div className="hand-actions">
+              <button
+                className={`secondary-action analysis-toggle ${
+                  analysisOpen ? "active" : ""
+                }`}
+                onClick={() => setAnalysisOpen((current) => !current)}
+              >
+                {analysisOpen ? "关闭辅助" : "辅助分析"}
+              </button>
               {canUseRoleButton(game) && (
                 <button
                   className="secondary-action"
@@ -966,12 +1018,11 @@ export function App() {
                 </button>
               )}
             </div>
-            {(roleButtonHint || discardButtonHint) && (
-              <small className="action-hint">
-                {discardButtonHint ?? roleButtonHint}
-              </small>
-            )}
           </div>
+
+          {analysisOpen && peaceAnalysis && (
+            <AnalysisSummaryPanel report={peaceAnalysis} />
+          )}
 
           <div className="card-grid">
             {humanRound.hand.map((cardId) => {
@@ -991,12 +1042,18 @@ export function App() {
                   evaluationMet={evaluation.met}
                   key={card.id}
                   bondNames={bondNames}
+                  analysis={analysisOpen ? getAnalysisForCard(peaceAnalysis, cardId) : undefined}
+                  disabled={game.phase === "resolution" && !evaluation.met}
                   mode={game.phase === "resolution" ? "score" : "discard"}
                   selected={game.phase === "resolution" ? scoringSelected : selected}
                   stageManaged={humanRound.stageManagedCardId === cardId}
                   wagered={humanRound.wageredCardId === cardId}
                   onClick={() => {
                     if (game.phase === "resolution") {
+                      if (!evaluation.met) {
+                        setMessage("这张拍立得当前未满足条件，不能作为本轮计分拍立得。");
+                        return;
+                      }
                       setSelectedScoringCard(cardId);
                     } else {
                       toggleSelectedCard(cardId);
@@ -1461,6 +1518,8 @@ function FinalResults(props: { game: GameState }) {
 }
 
 function CompetitionModeScreen(props: {
+  analysisOpen: boolean;
+  analysisReport: AnalysisReport | null;
   competitionGame: CompetitionGameState | null;
   competitionPlayerCount: 2 | 3 | 4;
   competitionTargetScore: number;
@@ -1487,6 +1546,7 @@ function CompetitionModeScreen(props: {
   onSetPlayerCount: (count: 2 | 3 | 4) => void;
   onSetTargetScore: (score: number) => void;
   onStart: () => void;
+  onToggleAnalysis: () => void;
   onToggleFeedbackContext: () => void;
   onUpdateLog: () => void;
 }) {
@@ -1677,7 +1737,18 @@ function CompetitionModeScreen(props: {
                 <h2>公开拍立得</h2>
                 <span>结算前只公开拍立得，不公开其他观众登记</span>
               </div>
+              <button
+                className={`secondary-action analysis-toggle ${
+                  props.analysisOpen ? "active" : ""
+                }`}
+                onClick={props.onToggleAnalysis}
+              >
+                {props.analysisOpen ? "关闭辅助" : "辅助分析"}
+              </button>
             </div>
+            {props.analysisOpen && props.analysisReport && (
+              <AnalysisSummaryPanel report={props.analysisReport} />
+            )}
             <div className="card-grid competition-card-grid">
               {game.market.map((cardId) => {
                 const card = getCardById(cardId);
@@ -1697,6 +1768,11 @@ function CompetitionModeScreen(props: {
                     card={card}
                     evaluationMet={evaluation.met}
                     key={card.id}
+                    analysis={
+                      props.analysisOpen
+                        ? getAnalysisForCard(props.analysisReport, cardId)
+                        : undefined
+                    }
                     mode="score"
                     scoreLabel={`${getCompetitionCardScore(cardId)} 分`}
                     selected={props.selectedCompetitionCard === cardId}
@@ -2072,9 +2148,38 @@ function getSuccessfulScoringCards(
     );
 }
 
+function AnalysisSummaryPanel(props: { report: AnalysisReport }) {
+  const recommendedCard = props.report.recommendedCardId
+    ? getCardById(props.report.recommendedCardId)
+    : null;
+
+  return (
+    <section className="analysis-panel">
+      <div>
+        <span>辅助分析</span>
+        <strong>{props.report.summary}</strong>
+      </div>
+      {recommendedCard && (
+        <small>
+          推荐项：{recommendedCard.name}《{recommendedCard.versionTitle}》
+        </small>
+      )}
+    </section>
+  );
+}
+
+function getAnalysisForCard(
+  report: AnalysisReport | null,
+  cardId: string,
+): CardAnalysis | undefined {
+  return report?.items.find((item) => item.cardId === cardId);
+}
+
 function CharacterCardView(props: {
   card: CharacterCard;
+  analysis?: CardAnalysis;
   bondNames: string[];
+  disabled?: boolean;
   evaluationMet: boolean;
   mode: "discard" | "score";
   scoreLabel?: string;
@@ -2095,6 +2200,7 @@ function CharacterCardView(props: {
   return (
     <button
       className={className}
+      disabled={props.disabled}
       onClick={props.onClick}
       type="button"
     >
@@ -2105,11 +2211,31 @@ function CharacterCardView(props: {
           <span>{props.scoreLabel ?? formatCardScore(props.card)}</span>
         </div>
         <p>{props.card.versionTitle}</p>
-        <small>{conditionSummary(props.card.condition)}</small>
+        <div className="condition-summary">
+          <ConditionSummary condition={props.card.condition} />
+        </div>
         {props.bondNames.length > 0 && (
           <div className="bond-ready-strip">
             <span>羁绊</span>
             <strong>{props.bondNames.join(" / ")}</strong>
+          </div>
+        )}
+        {props.analysis && (
+          <div className={`analysis-strip risk-${props.analysis.riskTag}`}>
+            <div>
+              <span>{props.analysis.recommendationLabel}</span>
+              <strong>
+                {formatProbability(props.analysis.finalSuccessRate)} / 期望{" "}
+                {props.analysis.expectedScore.toFixed(1)}
+              </strong>
+            </div>
+            <small>
+              {props.analysis.riskLabel}：{props.analysis.volatilityNote}
+            </small>
+            <small>{props.analysis.detailText}</small>
+            {props.analysis.conflictNote && (
+              <small>{props.analysis.conflictNote}</small>
+            )}
           </div>
         )}
         <div className="tag-row">
@@ -2176,25 +2302,70 @@ function getNewUnlockedBondNames(
     .filter((name): name is string => Boolean(name));
 }
 
-function conditionSummary(condition: Condition): string {
+function ConditionSummary(props: { condition: Condition }) {
+  const condition = props.condition;
+
   switch (condition.type) {
     case "minCount":
-      return `${markerLabels[condition.marker]} >= ${condition.count}`;
+      return (
+        <>
+          <ConditionMarker marker={condition.marker} /> {" >= "} {condition.count}
+        </>
+      );
     case "maxCount":
-      return `${markerLabels[condition.marker]} <= ${condition.count}`;
+      return (
+        <>
+          <ConditionMarker marker={condition.marker} /> {" <= "} {condition.count}
+        </>
+      );
     case "equalCount":
-      return `${markerLabels[condition.marker]} = ${markerLabels[condition.otherMarker]}`;
+      return (
+        <>
+          <ConditionMarker marker={condition.marker} /> ={" "}
+          <ConditionMarker marker={condition.otherMarker} />
+        </>
+      );
     case "lastIs":
-      return `最后 = ${markerLabels[condition.marker]}`;
+      return (
+        <>
+          最后 = <ConditionMarker marker={condition.marker} />
+        </>
+      );
     case "allOf":
-      return condition.conditions.map(conditionSummary).join(" & ");
+      return (
+        <>
+          {condition.conditions.map((child, index) => (
+            <span className="condition-fragment" key={index}>
+              {index > 0 && <span className="condition-operator">&</span>}
+              <ConditionSummary condition={child} />
+            </span>
+          ))}
+        </>
+      );
     case "anyOf":
-      return condition.conditions.map(conditionSummary).join(" / ");
+      return (
+        <>
+          {condition.conditions.map((child, index) => (
+            <span className="condition-fragment" key={index}>
+              {index > 0 && <span className="condition-operator">/</span>}
+              <ConditionSummary condition={child} />
+            </span>
+          ))}
+        </>
+      );
     default: {
       const exhaustive: never = condition;
       return exhaustive;
     }
   }
+}
+
+function ConditionMarker(props: { marker: MarkerCategory }) {
+  return (
+    <span className={`condition-marker marker-${props.marker}`}>
+      {markerLabels[props.marker]}
+    </span>
+  );
 }
 
 function canUseRoleButton(game: GameState): boolean {
@@ -2546,4 +2717,8 @@ function formatRoundScore(score: { totalScore: number; bonusSources: string[] })
   return score.bonusSources.includes("family_glory")
     ? "家族荣光"
     : `+${score.totalScore}`;
+}
+
+function formatProbability(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }

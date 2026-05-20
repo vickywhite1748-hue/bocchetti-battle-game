@@ -532,16 +532,17 @@ export function estimateCardValue(
 ): number {
   const card = getCardById(cardId);
   const evaluation = evaluateCardConditionForPlayer(state, playerId, cardId);
+  const estimateScore = getCardEstimateScoreValue(card);
 
   if (evaluation.met) {
-    return getCardScoreValue(card) + getPotentialBonusEstimate(state, playerId, cardId);
+    return estimateScore + getPotentialBonusEstimate(state, playerId, cardId);
   }
 
   if (state.drawnMarkers.length >= 10) {
     return 0;
   }
 
-  return getCardScoreValue(card) * 0.45 + getPotentialBonusEstimate(state, playerId, cardId);
+  return estimateScore * 0.45 + getPotentialBonusEstimate(state, playerId, cardId);
 }
 
 export function evaluateCardConditionForPlayer(
@@ -806,6 +807,10 @@ function getAutomaticScoringValue(
 
 function getCardScoreValue(card: CharacterCard): number {
   return card.score === "family_glory" ? 99 : card.score;
+}
+
+function getCardEstimateScoreValue(card: CharacterCard): number {
+  return card.score === "family_glory" ? 8 : card.score;
 }
 
 function getActiveBond(
