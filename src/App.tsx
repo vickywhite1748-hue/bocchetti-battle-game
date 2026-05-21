@@ -56,6 +56,7 @@ const UPDATE_LOGS = [
       "竞争模式对局页新增重开按钮，游戏结束后可直接回到竞争模式设置页重新开始。",
       "竞争模式将“显示建议”和“辅助分析”合并为同一个按钮，开启后同时显示阶段建议和牌面分析。",
       "和平模式辅助分析补充取舍说明，明确会结合公共积点、手牌、签署和羁绊给出参考。",
+      "和平模式辅助分析按钮移到对局页顶栏，与竞争模式保持一致。",
     ],
   },
   {
@@ -829,6 +830,14 @@ export function App() {
           </div>
         </div>
         <div className="top-actions">
+          <button
+            className={`secondary-action analysis-toggle ${
+              analysisOpen ? "active" : ""
+            }`}
+            onClick={() => setAnalysisOpen((current) => !current)}
+          >
+            {analysisOpen ? "关闭辅助" : "辅助分析"}
+          </button>
           <button onClick={() => setRulesOpen(true)}>游戏规则</button>
           <button onClick={() => setLogOpen((current) => !current)}>
             {logOpen ? "隐藏日志" : "对局日志"}
@@ -994,14 +1003,6 @@ export function App() {
               )}
             </div>
             <div className="hand-actions">
-              <button
-                className={`secondary-action analysis-toggle ${
-                  analysisOpen ? "active" : ""
-                }`}
-                onClick={() => setAnalysisOpen((current) => !current)}
-              >
-                {analysisOpen ? "关闭辅助" : "辅助分析"}
-              </button>
               {canUseRoleButton(game) && (
                 <button
                   className="secondary-action"
