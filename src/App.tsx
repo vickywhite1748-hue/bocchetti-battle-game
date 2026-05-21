@@ -47,9 +47,15 @@ import type {
 } from "./game";
 
 const HUMAN_PLAYER_ID = "player-1";
-const APP_VERSION = "v1.5.2";
+const APP_VERSION = "v1.5.3";
 const UPDATE_STORAGE_KEY = "bocchetti-battle-dismissed-version";
 const UPDATE_LOGS = [
+  {
+    version: "v1.5.3",
+    items: [
+      "竞争模式对局页新增重开按钮，游戏结束后可直接回到竞争模式设置页重新开始。",
+    ],
+  },
   {
     version: "v1.5.2",
     items: [
@@ -506,6 +512,12 @@ export function App() {
     setMessage(null);
   }
 
+  function resetCompetitionGame() {
+    setCompetitionGame(null);
+    setSelectedCompetitionCard(null);
+    setMessage(null);
+  }
+
   function submitCompetitionRegistration() {
     if (!competitionGame || !selectedCompetitionCard) {
       return;
@@ -694,6 +706,7 @@ export function App() {
         onSelectCard={setSelectedCompetitionCard}
         onSetPlayerCount={setCompetitionPlayerCount}
         onSetTargetScore={setCompetitionTargetScore}
+        onRestart={resetCompetitionGame}
         onStart={startCompetitionGame}
         onToggleAnalysis={() => setCompetitionAnalysisOpen((current) => !current)}
         onToggleFeedbackContext={() =>
@@ -1552,6 +1565,7 @@ function CompetitionModeScreen(props: {
   onSelectCard: (cardId: string | null) => void;
   onSetPlayerCount: (count: 2 | 3 | 4) => void;
   onSetTargetScore: (score: number) => void;
+  onRestart: () => void;
   onStart: () => void;
   onToggleAnalysis: () => void;
   onToggleFeedbackContext: () => void;
@@ -1686,6 +1700,7 @@ function CompetitionModeScreen(props: {
           </button>
           <button onClick={() => props.onSelectCard(null)}>清除选择</button>
           <button onClick={() => setRulesOpen(true)}>游戏规则</button>
+          <button onClick={props.onRestart}>重开</button>
           <button onClick={props.onHome}>主页</button>
           {game.phase === "round_result" && (
             <button className="primary-action" onClick={props.onBeginNextRound}>
