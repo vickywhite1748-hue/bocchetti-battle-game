@@ -54,6 +54,8 @@ const UPDATE_LOGS = [
     version: "v1.5.3",
     items: [
       "竞争模式对局页新增重开按钮，游戏结束后可直接回到竞争模式设置页重新开始。",
+      "竞争模式将“显示建议”和“辅助分析”合并为同一个按钮，开启后同时显示阶段建议和牌面分析。",
+      "和平模式辅助分析补充取舍说明，明确会结合公共积点、手牌、签署和羁绊给出参考。",
     ],
   },
   {
@@ -1041,7 +1043,10 @@ export function App() {
           </div>
 
           {analysisOpen && peaceAnalysis && (
-            <AnalysisSummaryPanel report={peaceAnalysis} />
+            <AnalysisSummaryPanel
+              description={getPeaceAnalysisDescription(game)}
+              report={peaceAnalysis}
+            />
           )}
 
           <div className="card-grid">
@@ -1294,6 +1299,15 @@ function BasicRules() {
         </p>
         <p>
           每轮会重新洗一整袋积点。某类积点已经出现很多时，再指望它继续出现就更冒险。
+        </p>
+      </article>
+      <article>
+        <h3>辅助分析</h3>
+        <p>
+          手牌区的“辅助分析”会同时打开阶段建议、推荐项、每张拍立得的最终成功率、期望分和风险提示。
+        </p>
+        <p>
+          和平模式辅助只根据公共积点、剩余积点袋、你的手牌、签署和已形成羁绊计算，用来帮助取舍和计分。
         </p>
       </article>
       <article>
@@ -1573,7 +1587,6 @@ function CompetitionModeScreen(props: {
 }) {
   const game = props.competitionGame;
   const [rulesOpen, setRulesOpen] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
 
   if (!game) {
     return (
@@ -1695,8 +1708,13 @@ function CompetitionModeScreen(props: {
           </div>
         </div>
         <div className="top-actions">
-          <button onClick={() => setGuideOpen((current) => !current)}>
-            {guideOpen ? "隐藏建议" : "显示建议"}
+          <button
+            className={`secondary-action analysis-toggle ${
+              props.analysisOpen ? "active" : ""
+            }`}
+            onClick={props.onToggleAnalysis}
+          >
+            {props.analysisOpen ? "关闭辅助" : "辅助分析"}
           </button>
           <button onClick={() => props.onSelectCard(null)}>清除选择</button>
           <button onClick={() => setRulesOpen(true)}>游戏规则</button>
@@ -1710,10 +1728,10 @@ function CompetitionModeScreen(props: {
         </div>
       </header>
 
-      {guideOpen ? (
+      {props.analysisOpen ? (
         <section className="stage-guide stage-guide-dismissible" aria-live="polite">
           <div>
-            <span>当前建议</span>
+            <span>辅助建议</span>
             <strong>{getCompetitionGuideTitle(game, props.humanRegistration, props.humanAction)}</strong>
           </div>
           <p>{getCompetitionGuideBody(game, props.humanRegistration, props.humanAction)}</p>
@@ -1759,17 +1777,12 @@ function CompetitionModeScreen(props: {
                 <h2>公开拍立得</h2>
                 <span>结算前只公开拍立得，不公开其他观众登记</span>
               </div>
-              <button
-                className={`secondary-action analysis-toggle ${
-                  props.analysisOpen ? "active" : ""
-                }`}
-                onClick={props.onToggleAnalysis}
-              >
-                {props.analysisOpen ? "关闭辅助" : "辅助分析"}
-              </button>
             </div>
             {props.analysisOpen && props.analysisReport && (
-              <AnalysisSummaryPanel report={props.analysisReport} />
+              <AnalysisSummaryPanel
+                description="根据你的积点、剩余积点袋和公开拍立得计算登记建议；不会读取其他观众的秘密登记。"
+                report={props.analysisReport}
+              />
             )}
             <div className="card-grid competition-card-grid">
               {game.market.map((cardId) => {
@@ -2094,6 +2107,15 @@ function CompetitionRulesModal(props: {
                 你也可以在当前回合选择等待，下一回合抽到新积点后再决定。
               </p>
             </article>
+            <article>
+              <h3>辅助分析</h3>
+              <p>
+                对局页顶部的“辅助分析”会同时打开阶段建议、公开拍立得成功率、期望分和风险提示。
+              </p>
+              <p>
+                辅助分析只根据你的积点、剩余积点袋和公开拍立得计算，不读取其他观众的秘密登记。
+              </p>
+            </article>
           </div>
         )}
 
@@ -2170,7 +2192,10 @@ function getSuccessfulScoringCards(
     );
 }
 
-function AnalysisSummaryPanel(props: { report: AnalysisReport }) {
+function AnalysisSummaryPanel(props: {
+  description?: string;
+  report: AnalysisReport;
+}) {
   const recommendedCard = props.report.recommendedCardId
     ? getCardById(props.report.recommendedCardId)
     : null;
@@ -2181,6 +2206,7 @@ function AnalysisSummaryPanel(props: { report: AnalysisReport }) {
         <span>辅助分析</span>
         <strong>{props.report.summary}</strong>
       </div>
+      {props.description && <small>{props.description}</small>}
       {recommendedCard && (
         <small>
           推荐项：{recommendedCard.name}《{recommendedCard.versionTitle}》
@@ -2188,6 +2214,22 @@ function AnalysisSummaryPanel(props: { report: AnalysisReport }) {
       )}
     </section>
   );
+}
+
+function getPeaceAnalysisDescription(game: GameState): string {
+  if (game.phase === "resolution") {
+    return "根据当前满足条件的拍立得、签署奖励和羁绊奖励，辅助选择本轮计分对象。";
+  }
+
+  if (isDiscardPhase(game.phase)) {
+    return "根据公共积点、剩余积点袋、你的手牌、签署和羁绊，辅助判断保留、追逐或弃置。";
+  }
+
+  if (isDrawPhase(game.phase)) {
+    return "当前阶段先抽取积点；抽完后辅助分析会随新积点重新计算手牌取舍。";
+  }
+
+  return "辅助分析只提供概率和取舍参考，不会自动替你操作，也不会改变结算规则。";
 }
 
 function getAnalysisForCard(
