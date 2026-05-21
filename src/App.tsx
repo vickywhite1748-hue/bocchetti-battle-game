@@ -47,9 +47,16 @@ import type {
 } from "./game";
 
 const HUMAN_PLAYER_ID = "player-1";
-const APP_VERSION = "v1.5.1";
+const APP_VERSION = "v1.5.2";
 const UPDATE_STORAGE_KEY = "bocchetti-battle-dismissed-version";
 const UPDATE_LOGS = [
+  {
+    version: "v1.5.2",
+    items: [
+      "修正和平模式辅助分析关闭后顶部仍显示建议的问题。",
+      "公开页面构建发布流程同步更新，确保线上版本跟随 main 分支改动。",
+    ],
+  },
   {
     version: "v1.5.1",
     items: [
@@ -826,10 +833,10 @@ export function App() {
         </div>
       </header>
 
-      {stageGuide && (
+      {analysisOpen && stageGuide && (
         <section className="stage-guide" aria-live="polite">
           <div>
-            <span>当前建议</span>
+            <span>辅助建议</span>
             <strong>{stageGuide.title}</strong>
           </div>
           <p>{stageGuide.body}</p>
